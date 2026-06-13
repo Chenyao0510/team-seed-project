@@ -1,6 +1,20 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { AnimatePresence, motion, useIsPresent } from 'framer-motion'
 import type { Character, DebateState, DebateStatus, ChatHistoryEntry } from '../types/state'
 import { addCharacter, nextTurn } from '../api/client'
+
+// PointsPanel (T33) のアニメーション秒数（CONSTRAINTS.md: マジックナンバー禁止）。
+// 1ターンで「追加=最大1 / 入れ替え=最大1」を Gemini 側で強制し (D11 prompt)、
+// フロントは差分を派手に演出する: 新規は NEW バッジ + emerald glow をしっかり残し、
+// 削除は line-through で滞留させてから去る。
+const POINTS_ENTER_DURATION = 0.55
+const POINTS_NEW_HIGHLIGHT_DURATION = 3.5 // NEW バッジ表示時間
+const POINTS_GLOW_DURATION = 2.8 // glow 減衰時間
+const POINTS_EXIT_DURATION = 1.1 // line-through を見せるためゆっくり
+const POINTS_GLOW_BOX_SHADOW = '0 0 32px rgba(52, 211, 153, 0.95)'
+const POINTS_NO_BOX_SHADOW = '0 0 0px rgba(52, 211, 153, 0)'
+const POINTS_NEW_BG = 'rgba(16, 185, 129, 0.35)' // emerald-500 + alpha
+const POINTS_KEPT_BG = 'rgba(51, 65, 85, 0.6)' // slate-700/60
 
 interface DebateStageProps {
   state: DebateState
@@ -449,30 +463,160 @@ interface PointsPanelProps {
 }
 
 function PointsPanel({ points }: PointsPanelProps) {
+  // 「props 由来の派生 state」パターン。points が変わった瞬間にだけ、直前のスナップ
+  // ショットを `previousPoints` に退避して再描画する。マウント直後は previousPoints
+  // = points なので「全てが NEW」扱いにならない（初回描画で過剰演出しない）。
+  // React 19 の react-hooks/refs ルール対策で useRef ではなく useState を使う。
+  const [renderedPoints, setRenderedPoints] = useState<string[]>(points)
+  const [previousPoints, setPreviousPoints] = useState<string[]>(points)
+  if (renderedPoints !== points) {
+    setPreviousPoints(renderedPoints)
+    setRenderedPoints(points)
+  }
+
+  const previousSet = new Set(previousPoints)
+  const currentSet = new Set(points)
+  const newItems = points.filter((p) => !previousSet.has(p))
+  const removedItems = previousPoints.filter((p) => !currentSet.has(p))
+
   return (
     <aside
       data-testid="points-panel"
       className="w-56 shrink-0 rounded-lg border border-slate-700 bg-slate-800/40 p-4"
     >
-      <h2 className="mb-3 text-xs uppercase tracking-wider text-slate-400">
-        論点
-      </h2>
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-xs uppercase tracking-wider text-slate-400">論点</h2>
+        <DiffBadge added={newItems.length} removed={removedItems.length} />
+      </div>
       {points.length === 0 ? (
         <p className="text-sm text-slate-500">まだ論点が出ていません</p>
       ) : (
-        <ul className="space-y-2">
-          {points.map((p) => (
-            <li
-              key={p}
-              data-testid="points-item"
-              className="rounded bg-slate-700/60 px-3 py-2 text-sm text-slate-100"
-            >
-              {p}
-            </li>
-          ))}
+        <ul data-testid="points-list" className="space-y-2">
+          <AnimatePresence initial={false}>
+            {points.map((p) => {
+              const isNew = !previousSet.has(p)
+              return (
+                <PointItem
+                  key={p}
+                  point={p}
+                  isNew={isNew}
+                />
+              )
+            })}
+          </AnimatePresence>
         </ul>
       )}
     </aside>
+  )
+}
+
+interface PointItemProps {
+  point: string
+  isNew: boolean
+}
+
+function PointItem({ point, isNew }: PointItemProps) {
+  const isPresent = useIsPresent()
+  return (
+    <motion.li
+      layout
+      data-testid="points-item"
+      data-state={isPresent ? (isNew ? 'new' : 'kept') : 'removing'}
+      initial={
+        isNew
+          ? {
+              opacity: 0,
+              x: -24,
+              scale: 0.7,
+              backgroundColor: POINTS_NEW_BG,
+              boxShadow: POINTS_GLOW_BOX_SHADOW,
+            }
+          : false
+      }
+      animate={{
+        opacity: 1,
+        x: 0,
+        scale: 1,
+        backgroundColor: POINTS_KEPT_BG,
+        boxShadow: POINTS_NO_BOX_SHADOW,
+        transition: {
+          opacity: { duration: POINTS_ENTER_DURATION, ease: 'easeOut' },
+          x: { duration: POINTS_ENTER_DURATION, ease: 'easeOut' },
+          // 新規は spring で「ポンッ」と入場
+          scale: isNew
+            ? { type: 'spring', stiffness: 320, damping: 14 }
+            : { duration: POINTS_ENTER_DURATION, ease: 'easeOut' },
+          backgroundColor: { duration: POINTS_GLOW_DURATION, ease: 'easeOut' },
+          boxShadow: { duration: POINTS_GLOW_DURATION, ease: 'easeOut' },
+        },
+      }}
+      exit={{
+        opacity: 0,
+        x: 32,
+        scale: 0.92,
+        transition: { duration: POINTS_EXIT_DURATION, ease: 'easeIn' },
+      }}
+      className="relative flex items-center gap-2 overflow-hidden rounded px-3 py-2 text-sm"
+      style={{ willChange: 'transform, opacity, box-shadow, background-color' }}
+    >
+      <span
+        className={
+          isPresent
+            ? 'flex-1 text-slate-100'
+            : 'flex-1 text-rose-200 line-through decoration-rose-400 decoration-2'
+        }
+      >
+        {point}
+      </span>
+      {isNew && isPresent && <NewBadge />}
+    </motion.li>
+  )
+}
+
+function NewBadge() {
+  return (
+    <motion.span
+      data-testid="points-new-badge"
+      initial={{ opacity: 0, scale: 0.6 }}
+      animate={{
+        opacity: [0, 1, 1, 0],
+        scale: [0.6, 1, 1, 0.9],
+      }}
+      transition={{
+        duration: POINTS_NEW_HIGHLIGHT_DURATION,
+        ease: 'easeOut',
+        times: [0, 0.1, 0.75, 1],
+      }}
+      className="rounded-full bg-emerald-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-900"
+    >
+      New
+    </motion.span>
+  )
+}
+
+interface DiffBadgeProps {
+  added: number
+  removed: number
+}
+
+function DiffBadge({ added, removed }: DiffBadgeProps) {
+  if (added === 0 && removed === 0) return null
+  return (
+    <motion.span
+      key={`${added}-${removed}`}
+      data-testid="points-diff-badge"
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: [0, 1, 1, 0], y: [-4, 0, 0, -4] }}
+      transition={{
+        duration: POINTS_NEW_HIGHLIGHT_DURATION,
+        ease: 'easeOut',
+        times: [0, 0.15, 0.75, 1],
+      }}
+      className="flex items-center gap-1 text-[10px] font-bold"
+    >
+      {added > 0 && <span className="text-emerald-300">+{added}</span>}
+      {removed > 0 && <span className="text-rose-300">−{removed}</span>}
+    </motion.span>
   )
 }
 

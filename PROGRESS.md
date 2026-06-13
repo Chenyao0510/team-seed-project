@@ -12,13 +12,13 @@
 ### フロントエンド (UX / UI / アニメーション)
 - [x] **T51** `[Front]`: **強制介入ターンのUI改善**
   - 観点と対立の構造をより視覚的に分かりやすく整理し、見やすくする。
-- [ ] **T52** `[Both]`: **アバター背景透過の精度向上**
-  - OpenCVの処理工夫、または画像生成AIへのプロンプト調整で切り抜きの品質を上げる。
+- [x] **T52** `[Both]`: **アバター背景透過の精度向上**
+  - AIを用いて透過することによってきれいな透過を実現した。
 - [ ] **T53** `[Front]`: **ユーザー介入操作のUI統合**
   - 議論画面において「質問」「観点追加」などの操作アクションを分かりやすくまとめる(集約する,ユーザ介入モーダルのように)。
 - [ ] **T54** `[Front]`: **フルスクリーンフィット化**
   - 画面が意図せずスライド・スクロールしてしまう問題を修正し、画面内に収める。
-- [ ] **T55** `[Front]`: **立ち絵表示と発言ハイライト**
+- [x] **T55** `[Front]`: **立ち絵表示と発言ハイライト**
   - 人物アバターを円形ではなく「立ち絵」として表示。発言中のキャラクターを光らせるなどの動的表現（アニメーション）を追加し、より魅力的にする。
 - [ ] **T56** `[Front]`: **論点の2軸マッピングUI**
   - 論点を2軸（XY座標）上にプロットし、ノード上に文字を表示する高度な可視化の実装。（保留） 
@@ -77,3 +77,18 @@
 - 2026-06-14: T67（偉人AI発言の音声読み上げ TTS）を実装。
   - VOICEVOX（ポート50021）を使用。バックエンドに `/api/tts` エンドポイントを追加し、フロントエンドで `state.current_speech` 更新時に自動再生。
   - キャラクター名（人格）を元にハッシュを取り、男女含む複数の `speaker_id` に動的割り当てを行うようにした。
+- 2026-06-14: T52（アバター背景透過の精度向上）、T55（立ち絵表示と発言ハイライト）を実装。
+  - `backend/app/background_removal.py` で `cv2.GaussianBlur` を適用し、境界のエッジや緑色のフリンジを軽減。
+  - `backend/app/gemini_client.py` で、アバターを円形アイコンから「全身の立ち絵」として生成するようにプロンプトを変更。
+  - API スキーマと `DebateState` に `emotion` を追加し、Gemini に 8種類の感情 (neutral, happy, angry, sad, surprised, thinking, confident, confused) を分類させる。
+  - `DebateStage.tsx` をギャルゲー風の立ち絵レイアウトに刷新。
+  - 話しているキャラクターに上下に揺れる波形アニメーション (`y: [0, -15, 0]`) と、分類された感情に応じた SVG 絵文字エフェクト（キラキラ、怒りマーク、しずく等）を追加。
+- 2026-06-14: T52 続き（画像参照付き生成 + 立ち絵の画面占有率アップ）。
+  - `backend/app/image_search.py` を新設。汎用画像検索 (DuckDuckGo Images) を 2 段 (vqd トークン取得 → JSON API) で叩き、上位 5 件の中から最初にダウンロード成功した画像を採用。Wikipedia 未登録の人物（ブロガー、地方の有名人、若手の研究者等）でも引けるよう Wikipedia 依存はやめた。マジックバイトで PNG/JPEG/WebP/GIF を判別、4MB 上限。
+  - `backend/app/gemini_client.generate_avatar_image` に `reference_image: tuple[bytes, str] | None` を追加し、`types.Part.from_bytes` で nano banana にマルチモーダル入力。プロンプトに「参照写真の顔立ち・髪型・年代をそっくり再現」指示を追記。NanoBanana が知らない人物でも別人にならないようにする。
+  - `backend/app/avatar_pipeline.generate_character_avatar` で参照画像を取得→ description 生成→画像生成の順に差し替え。参照画像取得失敗時は description のみで生成にフォールバック（既存の例外ハンドリングは維持）。
+  - 新規テスト `backend/tests/test_image_search.py` (6 ケース): DDG 成功 / 1件目失敗→次候補 / vqd トークン無し / 結果ゼロ / 巨大画像拒否 / MIME 判別不能。既存の `test_add_character.py` のスタブも新シグネチャに追従。
+  - `frontend/src/screens/DebateStage.tsx` の立ち絵レイアウトを「列を flex-1 で均等分配 + 高さ `clamp(560px, 90vh, 1200px)`」に刷新。これまで固定幅 (clamp 220–460px) で並べていたため大型化するとユーザー丸が右画面外に押し出されていたが、`flex-1 min-w-0` 分配 + `shrink-0` の user 列で必ず画面内に収まるようにした。立ち絵自体も最大 860px → 1200px に拡大し、ほぼステージ全体を占有するサイズへ。
+  - さらに「縦幅統一」要望を反映: 立ち絵 img を `absolute bottom-0 h-full w-auto max-w-none` に変更し、ステージの h-full で全員同じ縦サイズ、横はアスペクト比に応じた自然幅で描画。列幅 (`flex-1 min-w-0 max-w-[360px]`) より広い画像は隣にはみ出して重なる（ユーザー要望: 横重なり可）。
+  - 立ち絵 PNG を bbox 自動クロップ: `backend/app/background_removal.py` で透過後 `alpha > 32` の最小外接矩形＋12px パディングにクロップ。これにより透過 PNG の余白が削れ、フロント側 `h-full w-auto` で表示したときキャラがステージを目一杯占めるようになる。`test_background_removal.py` に bbox クロップ／全透過時の現状維持ケースを追加。
+  - backend テスト 30 passed、`make verify-all` グリーン。

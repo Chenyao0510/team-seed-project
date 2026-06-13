@@ -1,7 +1,9 @@
-"""Gemini API 1
+"""Gemini API
 
-- describe_appearance: Search Grounding を使って人物の外見プロンプトを生成する（best-effort）
 - generate_avatar_image: nano banana (画像生成モデル) でクロマキー背景のアバター画像を生成する
+  (T52: 人物名 + 参照画像数枚をマルチモーダル入力として渡し、文字での外見説明は使わない)
+- generate_next_turn / generate_reflection / generate_summary: 議論の State 遷移
+  (responseSchema による JSON 強制出力)
 
 CONSTRAINTS.md: API キーはここで一度だけ読み込み、コードへのハードコードはしない。
 呼び出し元 (avatar_pipeline) は try/except でフォールバックする前提のため、
@@ -16,9 +18,7 @@ from google.genai import types
 
 from app.config import (
     CHAT_HISTORY_PROMPT_LIMIT,
-    CHROMA_KEY_BGR,
     GEMINI_API_KEY,
-    GROUNDING_TIMEOUT_SECONDS,
     IMAGE_MODEL,
     IMAGE_TIMEOUT_SECONDS,
     NEXT_TURN_TIMEOUT_SECONDS,
@@ -26,7 +26,6 @@ from app.config import (
     SUMMARIZE_HISTORY_PROMPT_LIMIT,
     SUMMARIZE_TIMEOUT_SECONDS,
     TEXT_MODEL,
-    TEXT_TIMEOUT_SECONDS,
 )
 from app.models import (
     AgentThoughtOutput,
@@ -46,66 +45,43 @@ def _get_client() -> genai.Client:
     return _client
 
 
-def _chroma_color_name() -> str:
-    b, g, r = CHROMA_KEY_BGR
-    if r == 0 and g == 255 and b == 0:
-        return "鮮やかな緑色（クロマキー用グリーンバック）"
-    return f"単色背景 (RGB {r},{g},{b})"
+def generate_avatar_image(
+    name: str,
+    reference_images: list[tuple[bytes, str]] | None = None,
+) -> bytes:
+    """人物名 + 参照画像から、クロマキー背景のアバター画像 (PNG/JPEG bytes) を生成する。
 
-
-def describe_appearance(name: str) -> str:
-    """人物名から、アバター画像生成用の外見プロンプトを生成する。
-
-    Search Grounding を使い実在人物のビジュアル特徴を反映する（best-effort）。
-    Grounding 付きの呼び出しが失敗・タイムアウトした場合は、Grounding 無しで再試行する。
+    T52: 文字での外見説明は省略し、画像検索で取得した本人写真を複数枚渡して
+    Gemini (nano banana) に「これらは同一人物の写真だから、これに似せて全身立ち絵を
+    描いて」と指示する方が、文字描写を介するより別人化リスクが低い。
+    参照画像が無いときは名前だけで生成する（モデルが知っている人物なら描ける）。
     """
-    prompt = (
-        f"「{name}」という人物について、似顔絵アバターを描くための外見の特徴を、"
-        "服装・髪型・年代・雰囲気を中心に日本語で3〜4文で説明してください。"
-        "本人の実際の見た目を調べた上で記述してください。"
-    )
-    try:
-        return _generate_text(
-            prompt,
-            timeout_seconds=GROUNDING_TIMEOUT_SECONDS,
-            use_search_grounding=True,
+    references = reference_images or []
+    has_references = len(references) > 0
+
+    if has_references:
+        reference_clause = (
+            f"添付した {len(references)} 枚の参照写真はすべて「{name}」という同一人物の写真です。"
+            "これらを最優先の手がかりとし、顔立ち（目・鼻・口の配置、輪郭）、髪型、"
+            "肌の色、年代感、雰囲気をそっくり再現した、本人と判別できる似顔絵にしてください。"
         )
-    except Exception:
-        return _generate_text(
-            prompt,
-            timeout_seconds=TEXT_TIMEOUT_SECONDS,
-            use_search_grounding=False,
-        )
+    else:
+        reference_clause = ""
 
-
-def _generate_text(prompt: str, timeout_seconds: int, use_search_grounding: bool) -> str:
-    config_kwargs: dict = {"http_options": types.HttpOptions(timeout=timeout_seconds * 1000)}
-    if use_search_grounding:
-        config_kwargs["tools"] = [types.Tool(google_search=types.GoogleSearch())]
-
-    response = _get_client().models.generate_content(
-        model=TEXT_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(**config_kwargs),
-    )
-    text = (response.text or "").strip()
-    if not text:
-        raise ValueError("Gemini text response was empty")
-    return text
-
-
-def generate_avatar_image(appearance_description: str) -> bytes:
-    """外見の説明文から、クロマキー背景のアバター画像 (PNG/JPEG bytes) を生成する。"""
     prompt = (
-        "次の特徴を持つ人物の、上半身バストアップのアバターイラストを1枚生成してください。\n"
-        f"特徴: {appearance_description}\n"
-        f"背景は必ず{_chroma_color_name()}の単色で、グラデーションや模様を入れないこと。"
-        "人物の服や髪に背景と同じ緑色を使わないこと。"
+        f"「{name}」の体全体（全身）が描かれた立ち絵イラストを1枚生成してください。\n"
+        f"{reference_clause}"
+        f"頭の先が画像の上端から10%くらい、足先も下端から10%くらいで上下に余裕があるように配置すること。\n"
+        f"等身はその人の年齢に応じた比率にすること。"
     )
+
+    contents: list = [prompt]
+    for image_bytes, mime_type in references:
+        contents.append(types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
 
     response = _get_client().models.generate_content(
         model=IMAGE_MODEL,
-        contents=prompt,
+        contents=contents,
         config=types.GenerateContentConfig(
             response_modalities=["IMAGE"],
             http_options=types.HttpOptions(timeout=IMAGE_TIMEOUT_SECONDS * 1000),
@@ -123,7 +99,7 @@ def generate_avatar_image(appearance_description: str) -> bytes:
 def generate_agent_thought(state: DebateState, character_name: str) -> AgentThoughtOutput:
     """各キャラクターに対して個別に次のターンでの思考を構造化生成する。"""
     prompt = _build_agent_thought_prompt(state, character_name)
-    
+
     max_retries = 2
     for attempt in range(max_retries + 1):
         try:
@@ -145,6 +121,7 @@ def generate_agent_thought(state: DebateState, character_name: str) -> AgentThou
                 time.sleep(1.0 * (attempt + 1))
             else:
                 raise e
+
 
 def generate_next_turn(state: DebateState) -> NextTurnLLMOutput:
     """現在の Debate State から、次のターン（話者・発言・論点）を構造化生成する。
@@ -288,31 +265,54 @@ def _build_agent_thought_prompt(state: DebateState, character_name: str) -> str:
         "    * 順序も前ターンの並び順を尊重し、新規論点はリスト末尾に追加すること\n"
         "- current_topic: 現在議論されている小テーマを、名詞句を「/」で区切った"
         "10〜20文字程度の短い表現にすること。\n"
+        "- emotion: 発言内容に合わせた表情を neutral, happy, sad, angry, surprised, thinking から選んでください。\n"
     )
+
 
 def _build_next_turn_prompt(state: DebateState) -> str:
     roster = "、".join(c.name for c in state.characters)
+    # 履歴行に emotion を含める。Gemini に「直近で使われた感情」を見せて
+    # 同じ感情の連発を避けさせる手がかりにする。
     history_lines = [
-        f"{m.speaker}: {m.text}" for m in state.chat_history[-CHAT_HISTORY_PROMPT_LIMIT:]
+        f"{m.speaker}[{m.emotion}]: {m.text}"
+        for m in state.chat_history[-CHAT_HISTORY_PROMPT_LIMIT:]
     ]
     history_text = "\n".join(history_lines) if history_lines else "(まだ発言はありません)"
     points_text = "、".join(state.current_points) if state.current_points else "(まだなし)"
+    recent_emotions = [m.emotion for m in state.chat_history[-3:] if m.emotion]
+    recent_emotions_text = "、".join(recent_emotions) if recent_emotions else "(まだなし)"
 
     return (
         "あなたは討論番組の進行役です。以下の討論の状況をもとに、次に発言する人物を1人選び、"
-        "その人物として日本語で発言してください。\n\n"
+        "その人物として日本語で発言し、感情の種類も指定してください。\n\n"
         f"テーマ: {state.theme}\n"
         f"現在の論点: {state.current_topic}\n"
         f"登場人物（roster）: {roster}\n"
         f"直前の発言者: {state.active_character}\n"
-        f"これまでの発言ログ:\n{history_text}\n"
-        f"現在の論点リスト: {points_text}\n\n"
+        f"これまでの発言ログ（[]内は当時の感情）:\n{history_text}\n"
+        f"現在の論点リスト: {points_text}\n"
+        f"直近3ターンの感情: {recent_emotions_text}\n\n"
         "ルール:\n"
         f"- active_character は roster ({roster}) の中から、直前の発言者"
         f"（{state.active_character}）とは別の人物を選ぶこと。\n"
         "- 発言ログの末尾の発言者が roster に含まれない場合、それはユーザーからの介入"
         "（異議・観点・質問）です。次の発言者はその介入に正面から反応すること。\n"
         "- current_speech は選んだ人物の口調・立場を反映した、1〜3文の日本語の発言。\n"
+        "- emotion は以下の8種類から、発言内容の **感情の重心** に最も合うものを選ぶ:\n"
+        '    * "confident": 自説を堂々と断定する／皮肉や勝ち誇り／反論を一蹴する\n'
+        '    * "thinking": 問いを返す／前提を疑う／「では〜とはどういうことか」と熟考する\n'
+        '    * "angry": 相手の意見を強く批判／本気で反対／義憤を露わにする\n'
+        '    * "surprised": 相手の言葉に意表を突かれる／想定外の視点に気づく\n'
+        '    * "happy": 賛意・同意・「いい指摘だ」と乗っかる／ユーモアを交える\n'
+        '    * "sad": 失望・諦観・悲観的な見通し／「残念だが…」のトーン\n'
+        '    * "confused": 自説に迷い／話の流れを掴みきれず戸惑う\n'
+        '    * "neutral": 上のどれにも当てはまらない、淡々とした事実説明のみ\n'
+        "- 感情選択の重要な追加ルール:\n"
+        "    * 直近3ターンと同じ感情をそのまま繰り返さないこと。\n"
+        "      議論はうねりを持って進むので、同じ感情が連続することは不自然。\n"
+        "    * 「とりあえず confident」「とりあえず thinking」のデフォルト選択を避け、"
+        "発言内容を読み返して合うものを選ぶこと。\n"
+        "    * neutral は本当に感情が動いていないときだけ。迷ったら他の7種から選ぶ。\n"
         "- current_points は議論全体を通じた論点リスト（3〜5個の簡潔な名詞句）。\n"
         "  認知負荷を下げるため、1ターンでの変更は最小限にすること:\n"
         "    * 追加は最大1個まで（今回の発言で新しく浮上した論点のみ）\n"
@@ -329,14 +329,11 @@ def _build_next_turn_prompt(state: DebateState) -> str:
 def _build_summarize_prompt(state: DebateState) -> str:
     roster_names = {c.name for c in state.characters}
     history_lines = [
-        f"{m.speaker}: {m.text}"
-        for m in state.chat_history[-SUMMARIZE_HISTORY_PROMPT_LIMIT:]
+        f"{m.speaker}: {m.text}" for m in state.chat_history[-SUMMARIZE_HISTORY_PROMPT_LIMIT:]
     ]
     history_text = "\n".join(history_lines) if history_lines else "(発言ログなし)"
     user_lines = [
-        f"{m.speaker}: {m.text}"
-        for m in state.chat_history
-        if m.speaker not in roster_names
+        f"{m.speaker}: {m.text}" for m in state.chat_history if m.speaker not in roster_names
     ]
     user_text = "\n".join(user_lines) if user_lines else "(ユーザー介入なし)"
     points_text = "、".join(state.current_points) if state.current_points else "(なし)"

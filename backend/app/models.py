@@ -30,6 +30,7 @@ class ChatMessage(BaseModel):
     speaker: str
     text: str
     avatar_url: str
+    emotion: str = "neutral"
 
 
 # ユーザー介入発言の既定話者名（roster 外）。フロント (DebateStage) と一致させる。
@@ -49,11 +50,14 @@ class UserRef(BaseModel):
 
 class AgentThoughtOutput(BaseModel):
     """各エージェント（AI）が個別に次の発言を考える際の構造化出力。"""
+
     willingness_to_speak: bool
     thought: str = Field(description="発言に至るまでの思考プロセス")
     current_speech: str
     current_points: list[str]
     current_topic: str
+    emotion: str = "neutral"
+
 
 class DebateState(BaseModel):
     """Screen 1 (Debate Stage) の唯一の信頼できる State。"""
@@ -63,6 +67,7 @@ class DebateState(BaseModel):
     active_character: str
     status: DebateStatus
     current_speech: str
+    emotion: str = "neutral"
     current_points: list[str]
     characters: list[CharacterRef] = Field(min_length=1)
     chat_history: list[ChatMessage]
@@ -70,10 +75,13 @@ class DebateState(BaseModel):
     user: UserRef = Field(default_factory=UserRef)
     agent_thoughts: dict[str, AgentThoughtOutput] = Field(default_factory=dict)
 
+
 class NextTurnLLMOutput(BaseModel):
     """(廃止予定: generate_next_turn で使用していたモデル)"""
+
     active_character: str
     current_speech: str
+    emotion: str = "neutral"
     current_points: list[str]
     current_topic: str
 

@@ -15,6 +15,7 @@ export function buildInitialDebateState(setup: SetupResult): DebateState {
     active_character: '',
     status: 'waiting',
     current_speech: '',
+    emotion: 'neutral',
     current_points: [],
     characters: setup.members.map(({ name, avatarUrl }) => ({
       name,

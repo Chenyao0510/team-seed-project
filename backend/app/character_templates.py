@@ -32,8 +32,11 @@ _TEMPLATE_CATALOG: tuple[tuple[str, str], ...] = (
 )
 
 
-def _avatar_url(slug: str) -> str:
-    return f"{PUBLIC_BASE_URL}{TEMPLATES_URL_PREFIX}/{slug}.png"
+def _avatar_url(slug: str, path) -> str:
+    # ファイルの mtime をクエリ文字列で付与してブラウザキャッシュを失効させる。
+    # seed_templates 再実行で PNG が更新されたら mtime が変わり、URL が新しくなる。
+    version = int(path.stat().st_mtime)
+    return f"{PUBLIC_BASE_URL}{TEMPLATES_URL_PREFIX}/{slug}.png?v={version}"
 
 
 def list_available_templates() -> list[CharacterTemplate]:
@@ -42,11 +45,13 @@ def list_available_templates() -> list[CharacterTemplate]:
     PNG が無い slug はスキップする（seed 未実行 / 誤削除 / 部分生成 のいずれでも
     UI を壊さないため）。
     """
-    return [
-        CharacterTemplate(slug=slug, name=name, avatar_url=_avatar_url(slug))
-        for slug, name in _TEMPLATE_CATALOG
-        if (TEMPLATES_DIR / f"{slug}.png").is_file()
-    ]
+    result: list[CharacterTemplate] = []
+    for slug, name in _TEMPLATE_CATALOG:
+        path = TEMPLATES_DIR / f"{slug}.png"
+        if not path.is_file():
+            continue
+        result.append(CharacterTemplate(slug=slug, name=name, avatar_url=_avatar_url(slug, path)))
+    return result
 
 
 def all_template_specs() -> list[tuple[str, str]]:

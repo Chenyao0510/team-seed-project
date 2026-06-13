@@ -39,13 +39,13 @@ def generate_thoughts(state: DebateState) -> DebateState:
     return DebateState(
         theme=state.theme,
         current_topic=state.current_topic,
-        active_character=state.active_character, # まだ変えない
+        active_character=state.active_character,  # まだ変えない
         status="thinking",
-        current_speech="", # 思考中なので空
+        current_speech="",  # 思考中なので空
         current_points=state.current_points,
         characters=state.characters,
         chat_history=chat_history,
-        turn_count=state.turn_count, # まだ増やさない
+        turn_count=state.turn_count,  # まだ増やさない
         user=state.user,
         agent_thoughts=thoughts,
     )
@@ -53,14 +53,14 @@ def generate_thoughts(state: DebateState) -> DebateState:
 
 def advance_turn(state: DebateState) -> DebateState:
     """現在の State を1ターン進め、新しい Debate State を返す。
-    
+
     もし既に思考結果 (agent_thoughts) があればそれを利用し、
     なければその場で生成（旧来の挙動）してから発言者を決定する。
     """
     # すでに思考済みの結果があるか確認
     if state.agent_thoughts and state.status == "thinking":
         thoughts = state.agent_thoughts
-        chat_history = state.chat_history # generate_thoughts で既にアーカイブ済み
+        chat_history = state.chat_history  # generate_thoughts で既にアーカイブ済み
     else:
         # 思考結果がない場合はその場で生成（フォールバック）
         thought_state = generate_thoughts(state)
@@ -94,10 +94,12 @@ def advance_turn(state: DebateState) -> DebateState:
         current_speech = chosen_thought.current_speech
         current_points = chosen_thought.current_points
         current_topic = chosen_thought.current_topic
+        emotion = chosen_thought.emotion
     else:
         current_speech = f"{next_character}が話を引き継ぎます。"
         current_points = state.current_points
         current_topic = state.current_topic
+        emotion = "neutral"
 
     return DebateState(
         theme=state.theme,
@@ -105,6 +107,7 @@ def advance_turn(state: DebateState) -> DebateState:
         active_character=next_character,
         status="speaking",
         current_speech=current_speech,
+        emotion=emotion,
         current_points=current_points,
         characters=state.characters,
         chat_history=chat_history,
@@ -136,6 +139,7 @@ def _archive_current_speech(state: DebateState) -> list[ChatMessage]:
         speaker=state.active_character,
         text=state.current_speech,
         avatar_url=_avatar_for(state, state.active_character),
+        emotion=state.emotion,
     )
     return [*state.chat_history, new_message]
 

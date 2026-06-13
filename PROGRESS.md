@@ -27,7 +27,8 @@
 - [x] **T58** `[Both]`: **Screen 0でのユーザーアバター追加**
   - 初期画面（SetupScreen）で、ユーザー自身のアバターも登録できるようにする。
   - State スキーマに `user:{name,avatar_url}` を追加 (DECISIONS D01)。SetupScreen に画像アップロード / AI生成の2モードで登録 UI を追加。DebateStage 右端のユーザーアバターと、ユーザー介入発言の `chat_history.avatar_url` を `state.user` から解決。
-- [] **T59** `[Front]`: **最終画面のレイアウト修正**
+- [~] **T59** `[Both]`: **最終画面のレイアウト修正**
+  - 当初 `[Front]` だったが、中心ノード `central_concept` を `IntegrationState` に追加する方針（仕様例 `[ハッカソン]` の単語表示のため）に伴い `[Both]` に変更。詳細は DECISIONS D15。
 #### Screen 2: Integration Map (視座の獲得レポート画面)
 
 議論を終え、得られた視座（構造）を可視化する結論画面。

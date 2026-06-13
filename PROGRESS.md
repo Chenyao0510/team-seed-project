@@ -27,8 +27,9 @@
 - [x] **T58** `[Both]`: **Screen 0でのユーザーアバター追加**
   - 初期画面（SetupScreen）で、ユーザー自身のアバターも登録できるようにする。
   - State スキーマに `user:{name,avatar_url}` を追加 (DECISIONS D01)。SetupScreen に画像アップロード / AI生成の2モードで登録 UI を追加。DebateStage 右端のユーザーアバターと、ユーザー介入発言の `chat_history.avatar_url` を `state.user` から解決。
-- [~] **T59** `[Both]`: **最終画面のレイアウト修正**
+- [x] **T59** `[Both]`: **最終画面のレイアウト修正**
   - 当初 `[Front]` だったが、中心ノード `central_concept` を `IntegrationState` に追加する方針（仕様例 `[ハッカソン]` の単語表示のため）に伴い `[Both]` に変更。詳細は DECISIONS D15。
+  - Screen 2 を Bento UI 中心ノード型レイアウトに刷新（中心 `central_concept` + 周辺カテゴリカード + SVG 関係線 + 介入トレース + 1〜2 行 Feedback）。アニメは Framer Motion で「カードが中心から飛び出してオーバーシュート着地」「中心ノードのリング永続回転 + breathing」「線が伸びる」「介入トレース 5 段 sequential 発光」を実装。
 #### Screen 2: Integration Map (視座の獲得レポート画面)
 
 議論を終え、得られた視座（構造）を可視化する結論画面。
@@ -184,3 +185,12 @@
 - 2026-06-13: T58（Screen 0 ユーザーアバター追加）を実装。
   - T58: Debate State に `user` を追加（DECISIONS D01 / ARCHITECTURE / fixtures / backend pydantic / frontend を同一変更で更新）。SetupScreen に「あなたのアバター」登録 UI（アップロード / AI生成トグル）を追加。backend `_avatar_for` が roster 外のユーザー発言を `user.avatar_url` で解決。
   - backend テスト 20 passed、`make verify-all` グリーン。
+
+- 2026-06-14: T59（Screen 2 Integration Map のレイアウト + アニメ刷新）を実装。
+  - 当初 `[Front]` 単独タスクだったが、中心ノードに `theme` をそのまま置くとレイアウト破綻するため、`IntegrationState` に `central_concept: str` (max_length=12) を追加する方針を採用 → `[Both]` に再分類。
+  - DECISIONS D01 に `central_concept` 追加 + D15 新規（Bento UI 中心ノード + 周辺カード + 関係線 + 介入トレース + アニメ順序）。`docs/PROJECT.md` Screen 2 章を T59 仕様で書き換え、`docs/ARCHITECTURE.md` の summarize データフローも追従。
+  - backend: `_derive_central_concept` を `summarize.py` に実装（末尾の `？/か/のだろうか` 等を剥がし、最初の助詞で切る素朴正規化）。`gemini_client.py` のプロンプトに「短い名詞句 / 最大 12 文字」の指示を追加。
+  - frontend: `lib/integrationLayout.ts`（カテゴリ数 → grid-template-areas + SVG slot 座標を返す純関数）、`components/integration/` 6 ファイル（GrowthHeader / CenterNode / StructureCard / ConnectionLines / InterventionTrace / FeedbackLine）を新設。`screens/IntegrationMap.tsx` をフルリライト。
+  - 派手化: カードを中心から `rotate -720→0 + scale 0→1.18→1` で飛び出させ、中心ノードは永続点線リング回転 + 内側 breathing、線が伸びるタイミングに合わせて中心「ボン」flash、介入チェーンは ★ → 中心 → 強調線 → 強調カード → 強調 element の 5 段 sequential 発光。
+  - コミット粒度: C1 docs+スキーマ宣言 / C2 backend 実装+テスト / C3 frontend 実装 / C3.5 アニメ強化 / C4 PROGRESS 更新 の 5 コミット。
+  - backend テスト 20 passed、`make verify-all` グリーン。`http://localhost:5173/?mock=integration` で動作確認済み。

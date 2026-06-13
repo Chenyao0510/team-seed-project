@@ -41,6 +41,7 @@ class DebateState(BaseModel):
     current_points: list[str]
     characters: list[CharacterRef] = Field(min_length=1)
     chat_history: list[ChatMessage]
+    turn_count: int = Field(default=0, ge=0)
 
 
 class NextTurnLLMOutput(BaseModel):

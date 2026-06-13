@@ -30,11 +30,12 @@
   ],
   "chat_history": [
     {"speaker": "string", "text": "string", "avatar_url": "string"}
-  ]
+  ],
+  "turn_count": 0
 }
 ```
 
-`characters` はステージ上に並ぶ参加者 roster。`active_character` はこの roster のいずれかの `name` を指す。`chat_history` は過去発話の追記ログで、Setup 直後は空配列。
+`characters` はステージ上に並ぶ参加者 roster。`active_character` はこの roster のいずれかの `name` を指す。`chat_history` は過去発話の追記ログで、Setup 直後は空配列。`turn_count` は `/api/next_turn` が呼ばれるたびにバックエンドが+1する整数で、Reflection Turn (T26/T27) の発火判定に使う。
 
 **スキーマ進化メモ (T13)**: 初期は `characters` なしだったが、初期状態（誰もまだ発言していない）で参加者の roster を保持する場所がないため追加。`chat_history` から逆引きする方式は「発言前の参加者」を表現できず、ステージ描画にも不便だった。
 
@@ -235,6 +236,38 @@ Debate State を返す（ミューテーションせず常に新規構築）。
 - `backend/app/debate.py`（新規）: `advance_turn` オーケストレーション
 - `backend/app/routes.py`: `POST /api/next_turn` を追加
 - `backend/app/config.py`: `CHAT_HISTORY_PROMPT_LIMIT` / `NEXT_TURN_TIMEOUT_SECONDS` を追加
+
+---
+
+## D12: Turn Counter で Reflection Turn を決定論的に発火する
+
+**判断**: Debate State に `turn_count: int`（既定 0）を追加する。`/api/next_turn` は
+ターンを進めるたびに `turn_count` を+1して返す。フロントは `turn_count` を
+`REFLECTION_INTERVAL`（=3）で割った余りが 0 になったタイミングで Reflection Panel
+(T26) を表示する。
+
+**理由**:
+
+- Semantic な「議論が膠着しているか」の判定は Gemini への追加問い合わせや複雑な
+  ヒューリスティクスが必要になり、ハッカソン尺・D02（マルチエージェント禁止）の
+  方針に合わない
+- ターン数というシンプルな整数カウンタであれば、バックエンドの1ステートフィールド
+  追加だけで「決定論的かつ安定したタイミング」での Reflection 発火を実現できる
+- T26 ではフロントのローカル state でターン数を暫定集計していたが、画面リロードや
+  複数タブでの不整合のリスクがあり、State (single source of truth, D01) に
+  含めることで解消する
+- ユーザー介入 (`onIntervene`) は `/api/next_turn` を経由しないため `turn_count` は
+  増加しない。「ユーザー介入はカウントしない」という T26 の方針を自然に継承する
+
+**影響範囲**:
+
+- `backend/app/models.py`: `DebateState.turn_count: int = Field(default=0, ge=0)`
+- `backend/app/debate.py`: `advance_turn` が `turn_count=state.turn_count + 1` を返す
+- `frontend/src/types/state.ts`: `DebateState.turn_count: number`
+- `frontend/src/lib/buildDebateState.ts`: 初期値 `turn_count: 0`
+- `frontend/src/screens/DebateStage.tsx`: ローカル `turnCount` 集計を廃止し、
+  `newState.turn_count % REFLECTION_INTERVAL === 0` で Reflection Panel を表示
+- `fixtures/debate_state_sample.json`: `turn_count` を追加
 
 ---
 

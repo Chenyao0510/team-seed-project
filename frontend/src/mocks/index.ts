@@ -5,7 +5,9 @@
 
 import debateRaw from '../../../fixtures/debate_state_sample.json'
 import integrationRaw from '../../../fixtures/integration_state_sample.json'
-import type { DebateState, IntegrationState } from '../types/state'
+import reflectionRaw from '../../../fixtures/reflection_summary_sample.json'
+import type { DebateState, IntegrationState, ReflectionSummary } from '../types/state'
 
 export const debateStateSample = debateRaw as DebateState
 export const integrationStateSample = integrationRaw as IntegrationState
+export const reflectionSummarySample = reflectionRaw as ReflectionSummary

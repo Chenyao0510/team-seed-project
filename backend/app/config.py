@@ -42,6 +42,9 @@ PLACEHOLDER_SIZE_PX = 256
 CHAT_HISTORY_PROMPT_LIMIT = 12  # プロンプトに渡す直近 chat_history 件数
 NEXT_TURN_TIMEOUT_SECONDS = 20
 
+# Reflection 構造化要約生成 (T26 残作業 / D13)
+REFLECTION_TIMEOUT_SECONDS = 20
+
 # 統合レポート生成 (T31)
 SUMMARIZE_HISTORY_PROMPT_LIMIT = 40  # プロンプトに渡す chat_history 件数の上限
 SUMMARIZE_TIMEOUT_SECONDS = 30

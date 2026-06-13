@@ -1,4 +1,4 @@
-"""機能エンドポイントのルーター。"""
+""""""
 
 from fastapi import APIRouter
 
@@ -9,7 +9,9 @@ from app.models import (
     AddCharacterResponse,
     DebateState,
     IntegrationState,
+    ReflectionSummary,
 )
+from app.reflection import build_reflection
 from app.summarize import build_integration
 
 router = APIRouter()
@@ -24,6 +26,11 @@ def add_character(request: AddCharacterRequest) -> AddCharacterResponse:
 @router.post("/api/next_turn", response_model=DebateState)
 def next_turn(state: DebateState) -> DebateState:
     return advance_turn(state)
+
+
+@router.post("/api/reflection", response_model=ReflectionSummary)
+def reflection(state: DebateState) -> ReflectionSummary:
+    return build_reflection(state)
 
 
 @router.post("/api/summarize", response_model=IntegrationState)

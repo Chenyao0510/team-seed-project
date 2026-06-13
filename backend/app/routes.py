@@ -1,6 +1,7 @@
 """"""
 
 from fastapi import APIRouter
+from fastapi.responses import Response
 
 from app.avatar_pipeline import generate_character_avatar
 from app.debate import advance_turn
@@ -13,6 +14,7 @@ from app.models import (
 )
 from app.reflection import build_reflection
 from app.summarize import build_integration
+from app.tts import generate_tts
 
 router = APIRouter()
 
@@ -36,3 +38,9 @@ def reflection(state: DebateState) -> ReflectionSummary:
 @router.post("/api/summarize", response_model=IntegrationState)
 def summarize(state: DebateState) -> IntegrationState:
     return build_integration(state)
+
+
+@router.get("/api/tts", response_class=Response)
+async def tts(text: str, character_name: str) -> Response:
+    """VOICEVOXを使って音声を合成しWAVデータを返す"""
+    return await generate_tts(text, character_name)

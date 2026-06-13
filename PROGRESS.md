@@ -32,7 +32,7 @@
 - Gemini API キー (`GEMINI_API_KEY`) の動作確認未実施
 - frontend に vitest 未導入（`make test` は backend のみ実行）
 - 画像生成API (Nanobanana) / 透過APIのキー設定および疎通未確認
-- `App.tsx` に T02 用 Tailwind smoke 要素が残置中（T11 着手時に削除する）
+- `frontend/index.html` の `<title>` が `frontend` のまま（後続で `Insight Navigator` に変更）
 
 ### 並行作業の準備物（完了済）
 - `fixtures/` にフロント・バック共有の State JSON サンプル配置
@@ -57,8 +57,9 @@
   - 実績: `tailwindcss@4.3.1` + `@tailwindcss/vite@4.3.1` 追加、`vite.config.ts` にプラグイン追加、`src/index.css` に `@import "tailwindcss";` 追加。`App.tsx` に smoke 要素 (`data-testid="tailwind-smoke"`) を仮置きし、build 出力 CSS に `.bg-emerald-500` / `.rounded-md` / `.font-bold` / `.text-white` 全 4 クラス含有を grep で確認。CSS サイズ 4.10 → 10.81 kB。smoke は T11 着手時に削除予定。
 
 ### Phase 1: Screen 0 (テーマ入力と初期化)
-- [ ] **T11** `[Front]`: テーマ入力フォーム + 初期登場人物入力 UI
+- [x] **T11** `[Front]`: テーマ入力フォーム + 初期登場人物入力 UI
   - 検証基準: 入力した人物名がリスト化されること
+  - 実績: `frontend/src/screens/SetupScreen.tsx` を新設。テーマ入力 + メンバー入力（Enter キー or 「追加」ボタン）+ メンバー削除 + 「議論を開始する」ボタン（テーマあり & メンバー2名以上で活性）を実装。`SetupResult` 型と `onSubmit` callback を T13 用の接続点として export。`App.tsx` から Vite テンプレを削除し SetupScreen をレンダリング。未使用テンプレ資産（`App.css`、`src/assets/*`、`public/icons.svg`）を削除。`make verify-all` グリーン、`make dev-frontend` で HTTP 200 確認。
 - [ ] **T12** `[Both]`: 動的アバター生成パイプラインの実装と接続
   - Back: `/api/add_character` を実装（Gemini Search → 画像生成 → 透過処理）
   - Front: 各メンバー名で順に叩き、avatar_url を State に集約

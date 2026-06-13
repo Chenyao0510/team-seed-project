@@ -213,8 +213,24 @@
     - 長いログを読まなくても現在地が把握できる
 
 ### Phase 4: E2E 統合
-- [ ] **T41** `[Both]`: Screen 0 → 1 → 2 のエンドツーエンドシナリオテスト
+- [x] **T41** `[Both]`: Screen 0 → 1 → 2 のエンドツーエンドシナリオテスト
   - 検証基準: 1 シナリオを通しで実行し、アバター生成から最終マップ構築までStateが破綻しない
+  - 実績: 2026-06-13 実装完了。`backend/tests/test_e2e_scenario.py` を新規追加。
+    既存の `TestClient` + `monkeypatch` 基盤を再利用し、`/api/add_character` ×2
+    （アバターパイプラインをスタブ化）→ `buildInitialDebateState` 相当の初期 State
+    組み立て → `/api/next_turn` ×3（前ターンのレスポンス body をそのまま次の
+    リクエストに渡すループ。`turn_count`・`chat_history`・`characters`・
+    `active_character`・`status` を各ターンで検証）→ `/api/reflection`
+    （`blocks[].stances[].characters` が roster 内に絞られることを確認）→
+    roster 外発言（`あなた`）を `chat_history` に追記してユーザー介入を注入 →
+    `/api/summarize`（介入が `user_catalyst` / `highlighted_element_index` に
+    反映されることを Gemini 成功時・フォールバック両方で確認）まで連結。
+    各レスポンスは `DebateState` / `ReflectionSummary` / `IntegrationState`
+    （D01/D13 スキーマ）で `model_validate` し、画面間で State が破綻しないことを
+    型レベルで保証。実 Gemini API キー不要。
+    `frontend/src/App.tsx` の `?mock=debate|integration` 開発用ショートカットは
+    意図的に残置（コメントを更新し、E2E は backend pytest で担保する旨を明記）。
+    `make verify-all` グリーン（pytest 18 passed / lint / tsc / vite build 全通過）。
 
 ---
 
@@ -436,14 +452,31 @@
       `dev-frontend` の `/?mock=debate` で HTTP 200。
 
 ### Phase 4: E2E 統合
-- [ ] **T41** `[Both]`: Screen 0 → 1 → 2 のエンドツーエンドシナリオテスト
+- [x] **T41** `[Both]`: Screen 0 → 1 → 2 のエンドツーエンドシナリオテスト
   - 検証基準: 1 シナリオを通しで実行し、アバター生成から最終マップ構築までStateが破綻しない
+  - 実績: 2026-06-13 実装完了。`backend/tests/test_e2e_scenario.py` を新規追加。
+    既存の `TestClient` + `monkeypatch` 基盤を再利用し、`/api/add_character` ×2
+    （アバターパイプラインをスタブ化）→ `buildInitialDebateState` 相当の初期 State
+    組み立て → `/api/next_turn` ×3（前ターンのレスポンス body をそのまま次の
+    リクエストに渡すループ。`turn_count`・`chat_history`・`characters`・
+    `active_character`・`status` を各ターンで検証）→ `/api/reflection`
+    （`blocks[].stances[].characters` が roster 内に絞られることを確認）→
+    roster 外発言（`あなた`）を `chat_history` に追記してユーザー介入を注入 →
+    `/api/summarize`（介入が `user_catalyst` / `highlighted_element_index` に
+    反映されることを Gemini 成功時・フォールバック両方で確認）まで連結。
+    各レスポンスは `DebateState` / `ReflectionSummary` / `IntegrationState`
+    （D01/D13 スキーマ）で `model_validate` し、画面間で State が破綻しないことを
+    型レベルで保証。実 Gemini API キー不要。
+    `frontend/src/App.tsx` の `?mock=debate|integration` 開発用ショートカットは
+    意図的に残置（コメントを更新し、E2E は backend pytest で担保する旨を明記）。
+    `make verify-all` グリーン（pytest 18 passed / lint / tsc / vite build 全通過）。
 
 ---
 
 ## 5. セッションログ
 セッション終了時にこのセクションへ追記する。
 
+- `2026-06-13`: T41 `[Both]` Screen 0 → 1 → 2 の E2E シナリオテスト実装完了。`backend/tests/test_e2e_scenario.py` 新規追加（アバター生成 → 討論ループ → Reflection → ユーザー介入 → 統合レポート、Gemini 成功/フォールバック両方）。`App.tsx` の `?mock=` コメント更新（ショートカットは残置）。`make verify-all` グリーン（pytest 18 passed）。Phase 0〜4 全完了。
 - `2026-06-13`: T33 `[Front]` 構造のリアルタイム可視化（A案: 既存 current_points を AnimatePresence で差分アニメ、新規論点を emerald glow で強調）。スキーマ変更なし。`make verify-all` グリーン。
 - `2026-06-13`: T32 `[Front]` 結論画面 (IntegrationMap) UI 実装完了。Framer Motion 導入 (D08)、stagger Bento UI で Before→After / 構造マップ / Catalyst / Praise を順次構築。`make verify-all` グリーン。
 - `2026-06-13`: T31 `[Back]` `/api/summarize` 実装完了（D13）。`make verify-all` グリーン（pytest 13 passed）。

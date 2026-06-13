@@ -42,6 +42,7 @@ export function ConnectionLines({
         return (
           <motion.line
             key={lineId(index)}
+            data-line-highlighted={isHighlighted ? 'true' : 'false'}
             x1={centerPoint.x}
             y1={centerPoint.y}
             x2={slot.center.x}

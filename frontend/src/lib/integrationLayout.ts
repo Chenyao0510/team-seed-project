@@ -41,7 +41,17 @@ export interface IntegrationLayout {
   slots: LayoutSlot[]
 }
 
-const CENTER_POINT: Point = { x: 80, y: 50 }
+// 3×3 グリッドのセル中心を viewBox 座標で表現したもの。
+// 列: 1/6, 1/2, 5/6 → x: 26.67, 80, 133.33
+// 行: 1/6, 1/2, 5/6 → y: 16.67, 50, 83.33
+const CELL_X_LEFT = (1 / 6) * LAYOUT_VIEWBOX_WIDTH
+const CELL_X_CENTER = (1 / 2) * LAYOUT_VIEWBOX_WIDTH
+const CELL_X_RIGHT = (5 / 6) * LAYOUT_VIEWBOX_WIDTH
+const CELL_Y_TOP = (1 / 6) * LAYOUT_VIEWBOX_HEIGHT
+const CELL_Y_MIDDLE = (1 / 2) * LAYOUT_VIEWBOX_HEIGHT
+const CELL_Y_BOTTOM = (5 / 6) * LAYOUT_VIEWBOX_HEIGHT
+
+const CENTER_POINT: Point = { x: CELL_X_CENTER, y: CELL_Y_MIDDLE }
 const CENTER_AREA = 'center'
 
 // 3×3 グリッドのテンプレート文字列。areas のセル名は CSS grid-template-areas の
@@ -59,8 +69,8 @@ const LAYOUT_2: IntegrationLayout = {
   centerArea: CENTER_AREA,
   centerPoint: CENTER_POINT,
   slots: [
-    { area: 'left', position: 'left', center: { x: 22, y: 50 } },
-    { area: 'right', position: 'right', center: { x: 138, y: 50 } },
+    { area: 'left', position: 'left', center: { x: CELL_X_LEFT, y: CELL_Y_MIDDLE } },
+    { area: 'right', position: 'right', center: { x: CELL_X_RIGHT, y: CELL_Y_MIDDLE } },
   ],
 }
 
@@ -75,9 +85,17 @@ const LAYOUT_3: IntegrationLayout = {
   centerArea: CENTER_AREA,
   centerPoint: CENTER_POINT,
   slots: [
-    { area: 'top', position: 'top', center: { x: 80, y: 14 } },
-    { area: 'bottom-left', position: 'bottom-left', center: { x: 26, y: 84 } },
-    { area: 'bottom-right', position: 'bottom-right', center: { x: 134, y: 84 } },
+    { area: 'top', position: 'top', center: { x: CELL_X_CENTER, y: CELL_Y_TOP } },
+    {
+      area: 'bottom-left',
+      position: 'bottom-left',
+      center: { x: CELL_X_LEFT, y: CELL_Y_BOTTOM },
+    },
+    {
+      area: 'bottom-right',
+      position: 'bottom-right',
+      center: { x: CELL_X_RIGHT, y: CELL_Y_BOTTOM },
+    },
   ],
 }
 
@@ -91,10 +109,10 @@ const LAYOUT_4: IntegrationLayout = {
   centerArea: CENTER_AREA,
   centerPoint: CENTER_POINT,
   slots: [
-    { area: 'top', position: 'top', center: { x: 80, y: 14 } },
-    { area: 'right', position: 'right', center: { x: 138, y: 50 } },
-    { area: 'bottom', position: 'bottom', center: { x: 80, y: 86 } },
-    { area: 'left', position: 'left', center: { x: 22, y: 50 } },
+    { area: 'top', position: 'top', center: { x: CELL_X_CENTER, y: CELL_Y_TOP } },
+    { area: 'right', position: 'right', center: { x: CELL_X_RIGHT, y: CELL_Y_MIDDLE } },
+    { area: 'bottom', position: 'bottom', center: { x: CELL_X_CENTER, y: CELL_Y_BOTTOM } },
+    { area: 'left', position: 'left', center: { x: CELL_X_LEFT, y: CELL_Y_MIDDLE } },
   ],
 }
 
@@ -145,4 +163,19 @@ export function findHighlightTarget(
     }
   }
   return null
+}
+
+// Card の「中心ノード位置への変位量」を、コンテナ寸法に対する分数で返す。
+// 呼び出し側で実コンテナ幅・高さに掛けてピクセル offset を得て、
+// Framer Motion の x/y 初期値（=中心から飛び出す起点）として使う。
+export interface SlotMetrics {
+  centerOffsetXFrac: number
+  centerOffsetYFrac: number
+}
+
+export function getSlotMetrics(slot: LayoutSlot, centerPoint: Point): SlotMetrics {
+  return {
+    centerOffsetXFrac: (centerPoint.x - slot.center.x) / LAYOUT_VIEWBOX_WIDTH,
+    centerOffsetYFrac: (centerPoint.y - slot.center.y) / LAYOUT_VIEWBOX_HEIGHT,
+  }
 }

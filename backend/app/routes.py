@@ -37,6 +37,13 @@ def next_turn(state: DebateState) -> DebateState:
     return advance_turn(state)
 
 
+@router.post("/api/think", response_model=DebateState)
+def think(state: DebateState) -> DebateState:
+    """エージェント全員に思考を開始させ、willingness と思考内容を state に詰めて返す (T63)。"""
+    from app.debate import generate_thoughts
+    return generate_thoughts(state)
+
+
 @router.post("/api/reflection", response_model=ReflectionSummary)
 def reflection(state: DebateState) -> ReflectionSummary:
     return build_reflection(state)

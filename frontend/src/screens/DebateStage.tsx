@@ -1,55 +1,68 @@
-import { useEffect, useState, useRef, Fragment } from 'react'
-import { AnimatePresence, motion, useIsPresent } from 'framer-motion'
-import type { Character, DebateState, DebateStatus, ChatHistoryEntry, ReflectionSummary } from '../types/state'
-import { addCharacter, nextTurn, reflection, API_BASE_URL } from '../api/client'
+import { useEffect, useState, useRef, Fragment, useCallback } from "react";
+import { AnimatePresence, motion, useIsPresent } from "framer-motion";
+import type {
+  Character,
+  DebateState,
+  DebateStatus,
+  ChatHistoryEntry,
+  ReflectionSummary,
+  AgentThought,
+} from "../types/state";
+import {
+  addCharacter,
+  nextTurn,
+  reflection,
+  think,
+  API_BASE_URL,
+} from "../api/client";
 
 // PointsPanel (T33) のアニメーション秒数（CONSTRAINTS.md: マジックナンバー禁止）。
 // 1ターンで「追加=最大1 / 入れ替え=最大1」を Gemini 側で強制し (D11 prompt)、
 // フロントは差分を派手に演出する: 新規は NEW バッジ + emerald glow をしっかり残し、
 // 削除は line-through で滞留させてから去る。
-const POINTS_ENTER_DURATION = 0.55
-const POINTS_NEW_HIGHLIGHT_DURATION = 3.5 // NEW バッジ表示時間
-const POINTS_GLOW_DURATION = 2.8 // glow 減衰時間
-const POINTS_EXIT_DURATION = 1.1 // line-through を見せるためゆっくり
-const POINTS_GLOW_BOX_SHADOW = '0 0 32px rgba(52, 211, 153, 0.95)'
-const POINTS_NO_BOX_SHADOW = '0 0 0px rgba(52, 211, 153, 0)'
-const POINTS_NEW_BG = 'rgba(16, 185, 129, 0.35)' // emerald-500 + alpha
-const POINTS_KEPT_BG = 'rgba(51, 65, 85, 0.6)' // slate-700/60
+const POINTS_ENTER_DURATION = 0.55;
+const POINTS_NEW_HIGHLIGHT_DURATION = 3.5; // NEW バッジ表示時間
+const POINTS_GLOW_DURATION = 2.8; // glow 減衰時間
+const POINTS_EXIT_DURATION = 1.1; // line-through を見せるためゆっくり
+const POINTS_GLOW_BOX_SHADOW = "0 0 32px rgba(52, 211, 153, 0.95)";
+const POINTS_NO_BOX_SHADOW = "0 0 0px rgba(52, 211, 153, 0)";
+const POINTS_NEW_BG = "rgba(16, 185, 129, 0.35)"; // emerald-500 + alpha
+const POINTS_KEPT_BG = "rgba(51, 65, 85, 0.6)"; // slate-700/60
 
 interface DebateStageProps {
-  state: DebateState
-  onOpenHistory?: () => void
-  onStateChange?: (newState: DebateState) => void
-  onIntervene?: (next: DebateState) => void
-  onAddCharacter?: (character: Character) => void
-  onSummarize?: () => void
-  isSummarizing?: boolean
+  state: DebateState;
+  onOpenHistory?: () => void;
+  onStateChange?: (newState: DebateState) => void;
+  onIntervene?: (next: DebateState) => void;
+  onAddCharacter?: (character: Character) => void;
+  onSummarize?: () => void;
+  isSummarizing?: boolean;
 }
 
-type InterventionKind = 'objection' | 'viewpoint' | 'question'
+type InterventionKind = "objection" | "viewpoint" | "question";
 
 const INTERVENTION_LABEL: Record<InterventionKind, string> = {
-  objection: '異議',
-  viewpoint: '観点',
-  question: '質問',
-}
+  objection: "異議",
+  viewpoint: "観点",
+  question: "質問",
+};
 
 // ユーザーがアバター未登録 (state.user.avatar_url が空) のときのフォールバック表示 (T58)。
-const USER_AVATAR_FALLBACK = 'https://placeholder.example/user.png'
+const USER_AVATAR_FALLBACK = "https://placeholder.example/user.png";
 
 // ユーザー介入の発言者名（roster 外固定値。/api/next_turn が roster 外発言を
 // 「ユーザー介入」として扱い、次の AI がそれに反応する: DECISIONS D11）。
-const USER_SPEAKER = 'あなた'
+const USER_SPEAKER = "あなた";
 
 const STATUS_LABEL: Record<DebateStatus, string> = {
-  thinking: '思考中',
-  speaking: '発言中',
-  waiting: '待機中',
-}
+  thinking: "思考中",
+  speaking: "発言中",
+  waiting: "待機中",
+};
 
 // Reflection Turn (T26/T27): 何ターンごとに一時停止して Reflection Panel を表示するか。
 // turn_count は backend が `/api/next_turn` のたびに+1して返す値（ユーザー介入はカウントしない）。
-const REFLECTION_INTERVAL = 3
+const REFLECTION_INTERVAL = 3;
 
 export function DebateStage({
   state,
@@ -60,106 +73,192 @@ export function DebateStage({
   onSummarize,
   isSummarizing = false,
 }: DebateStageProps) {
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [isAddCharOpen, setIsAddCharOpen] = useState(false)
-  const isActive = (name: string) => state.active_character === name
-  const [intervention, setIntervention] = useState<InterventionKind | null>(null)
-  const [showReflection, setShowReflection] = useState(false)
-  const [reflectionSummary, setReflectionSummary] = useState<ReflectionSummary | null>(null)
-  const [reflectionLoading, setReflectionLoading] = useState(false)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isAddCharOpen, setIsAddCharOpen] = useState(false);
+  const isActive = (name: string) => state.active_character === name;
+  const [intervention, setIntervention] = useState<InterventionKind | null>(
+    null,
+  );
+  const [showReflection, setShowReflection] = useState(false);
+  const [reflectionSummary, setReflectionSummary] =
+    useState<ReflectionSummary | null>(null);
+  const [reflectionLoading, setReflectionLoading] = useState(false);
+  const [prefetchedReflection, setPrefetchedReflection] =
+    useState<ReflectionSummary | null>(null);
 
-  const existingNames = state.characters.map((c) => c.name)
+  const existingNames = state.characters.map((c) => c.name);
 
   const handleAddCharacter = async (character: Character) => {
-    onAddCharacter?.(character)
-    setIsAddCharOpen(false)
-  }
+    onAddCharacter?.(character);
+    setIsAddCharOpen(false);
+  };
 
   const submitIntervention = (kind: InterventionKind, text: string) => {
-    const trimmed = text.trim()
-    if (trimmed.length === 0) return
+    const trimmed = text.trim();
+    if (trimmed.length === 0) return;
     onIntervene?.({
       ...state,
       active_character: state.user.name,
       current_speech: `（${INTERVENTION_LABEL[kind]}）${trimmed}`,
-      status: 'speaking',
-    })
-    setIntervention(null)
-  }
+      status: "speaking",
+      agent_thoughts: {},
+    });
+    setIntervention(null);
+    // 介入後は文脈が変わるためキャッシュをクリア (T65)
+    setPrefetchedReflection(null);
+  };
 
   const handleOpenHistory = () => {
-    setIsHistoryOpen(true)
-    if (onOpenHistory) onOpenHistory()
-  }
+    setIsHistoryOpen(true);
+    if (onOpenHistory) onOpenHistory();
+  };
 
   const handleReflectionContinue = () => {
-    setShowReflection(false)
-    void handleNextTurn()
-  }
+    setShowReflection(false);
+    setPrefetchedReflection(null);
+    void handleNextTurn();
+  };
 
   const handleReflectionIntervention = (kind: InterventionKind) => {
-    setShowReflection(false)
-    setIntervention(kind)
-  }
+    setShowReflection(false);
+    setPrefetchedReflection(null);
+    setIntervention(kind);
+  };
 
   // AI 進行ターンが完了した際の共通処理。backend が返す turn_count が
   // REFLECTION_INTERVAL の倍数になったら Reflection Panel を表示し、
   // facilitator 一言 + 論点×立場×キャラの構造化要約を /api/reflection から取得する。
   const maybeShowReflection = (newState: DebateState) => {
-    if (newState.turn_count % REFLECTION_INTERVAL === 0) {
-      setShowReflection(true)
-      setReflectionSummary(null)
-      setReflectionLoading(true)
+    const isReflectionTurn = newState.turn_count % REFLECTION_INTERVAL === 0;
+    const isPreFetchTurn =
+      newState.turn_count % REFLECTION_INTERVAL === REFLECTION_INTERVAL - 1;
+
+    if (isReflectionTurn) {
+      setShowReflection(true);
+      if (prefetchedReflection) {
+        setReflectionSummary(prefetchedReflection);
+        setReflectionLoading(false);
+      } else {
+        setReflectionSummary(null);
+        setReflectionLoading(true);
+        reflection(newState)
+          .then((summary) => setReflectionSummary(summary))
+          .catch((err) => console.error(err))
+          .finally(() => setReflectionLoading(false));
+      }
+    } else if (isPreFetchTurn) {
+      // 次のターンがリフレクションなので先行取得しておく (T65)
       reflection(newState)
-        .then((summary) => setReflectionSummary(summary))
-        .catch((err) => console.error(err))
-        .finally(() => setReflectionLoading(false))
+        .then((summary) => setPrefetchedReflection(summary))
+        .catch((err) => console.error("Pre-fetch reflection failed:", err));
     }
-  }
+  };
 
   const handleNextTurn = async () => {
-    if (isGenerating || !onStateChange) return
-    setIsGenerating(true)
+    if (isGenerating || !onStateChange) return;
+    setIsGenerating(true);
     try {
-      const newState = await nextTurn(state)
-      onStateChange(newState)
-      maybeShowReflection(newState)
+      const newState = await nextTurn(state);
+      onStateChange(newState);
+      maybeShowReflection(newState);
     } catch (err) {
-      console.error(err)
-      alert('API呼び出しに失敗しました')
+      console.error(err);
+      alert("API呼び出しに失敗しました");
     } finally {
-      setIsGenerating(false)
+      setIsGenerating(false);
     }
-  }
+  };
+
+  const handleThink = useCallback(
+    async (currentState: DebateState) => {
+      if (isGenerating || !onStateChange) return;
+      // すでに思考結果がある、または待機中以外はスキップ（多重発火防止）
+      if (
+        currentState.status !== "speaking" ||
+        (currentState.agent_thoughts &&
+          Object.keys(currentState.agent_thoughts).length > 0)
+      ) {
+        return;
+      }
+
+      // status: thinking への遷移はバックエンドで行われるが、
+      // フロントエンドでも即座に isGenerating を true にしてガードする
+      setIsGenerating(true);
+      try {
+        const newState = await think(currentState);
+        // 通信中にユーザーが介入ボタンを押した場合は、結果を反映しない (T63)
+        if (interventionRef.current === null) {
+          onStateChange(newState);
+        }
+      } catch (err) {
+        console.error("Auto-think failed:", err);
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [isGenerating, onStateChange],
+  );
+
+  // 最新の intervention 状態を参照するための Ref
+  const interventionRef = useRef<InterventionKind | null>(intervention);
+  useEffect(() => {
+    interventionRef.current = intervention;
+  }, [intervention]);
+
+  // 発言が完了したタイミングで自動的に「思考」を開始する (T63)
+  useEffect(() => {
+    if (
+      state.status === "speaking" &&
+      state.current_speech !== "" &&
+      !isGenerating
+    ) {
+      // ユーザーが介入モード（モーダル入力中など）でないことを確認
+      if (intervention === null && !isAddCharOpen && !showReflection) {
+        const timer = setTimeout(() => {
+          void handleThink(state);
+        }, 1500); // 少し待ってから思考開始（読了感のため）
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [
+    state.current_speech,
+    state.status,
+    isGenerating,
+    intervention,
+    isAddCharOpen,
+    showReflection,
+    handleThink,
+    state,
+  ]);
 
   // 最初の発言がない場合は自動でAPIを叩いて会話を始める
   useEffect(() => {
-    let mounted = true
+    let mounted = true;
     const initTurn = async () => {
-      if (!onStateChange) return
-      setIsGenerating(true)
+      if (!onStateChange) return;
+      setIsGenerating(true);
       try {
-        const newState = await nextTurn(state)
+        const newState = await nextTurn(state);
         if (mounted) {
-          onStateChange(newState)
-          maybeShowReflection(newState)
+          onStateChange(newState);
+          maybeShowReflection(newState);
         }
       } catch (err) {
-        console.error(err)
+        console.error(err);
       } finally {
-        if (mounted) setIsGenerating(false)
+        if (mounted) setIsGenerating(false);
       }
-    }
+    };
 
-    if (state.chat_history.length === 0 && state.current_speech === '') {
-      void initTurn()
+    if (state.chat_history.length === 0 && state.current_speech === "") {
+      void initTurn();
     }
     return () => {
-      mounted = false
-    }
+      mounted = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []);
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-slate-900 text-slate-100">
@@ -180,11 +279,19 @@ export function DebateStage({
             <div className="absolute inset-x-0 bottom-20 top-0 flex justify-center items-end pointer-events-none z-0">
               <CharactersRow
                 characters={state.characters}
-                isActive={isActive}
+                isActive={(name) =>
+                  intervention || showReflection ? false : isActive(name)
+                }
                 status={state.status}
                 userName={state.user.name}
                 userAvatarUrl={state.user.avatar_url || USER_AVATAR_FALLBACK}
                 emotion={state.emotion}
+                agentThoughts={
+                  intervention || showReflection ? {} : state.agent_thoughts
+                }
+                isUserActive={
+                  !!intervention || showReflection || isActive(state.user.name)
+                }
               />
             </div>
 
@@ -193,11 +300,12 @@ export function DebateStage({
                 <TelopBox
                   speaker={state.active_character}
                   speech={state.current_speech}
-                  status={isGenerating ? 'thinking' : state.status}
+                  status={isGenerating ? "thinking" : state.status}
                   intervention={intervention}
                   onCancel={() => setIntervention(null)}
                   onSubmit={(text) => submitIntervention(intervention!, text)}
                   userName={state.user.name}
+                  agentThoughts={state.agent_thoughts}
                 />
                 {/* 進行ボタンをテロップ横か下に配置 */}
                 <div className="mx-auto mt-4 flex max-w-3xl justify-end">
@@ -207,7 +315,7 @@ export function DebateStage({
                     disabled={isGenerating}
                     className="rounded bg-emerald-600 px-6 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {isGenerating ? '思考中...' : '次へ ❯'}
+                    {isGenerating ? "思考中..." : "次へ ❯"}
                   </button>
                 </div>
               </div>
@@ -287,23 +395,27 @@ export function DebateStage({
         />
       )}
     </div>
-  )
+  );
 }
 
 interface ReflectionPanelProps {
-  currentTopic: string
-  characters: DebateState['characters']
-  summary: ReflectionSummary | null
-  loading: boolean
-  onContinue: () => void
-  onSelectIntervention: (kind: InterventionKind) => void
+  currentTopic: string;
+  characters: DebateState["characters"];
+  summary: ReflectionSummary | null;
+  loading: boolean;
+  onContinue: () => void;
+  onSelectIntervention: (kind: InterventionKind) => void;
 }
 
-const REFLECTION_INTERVENTION: { kind: InterventionKind; label: string; testId: string }[] = [
-  { kind: 'objection', label: '異議を唱える', testId: 'reflection-objection' },
-  { kind: 'viewpoint', label: '観点追加', testId: 'reflection-add-viewpoint' },
-  { kind: 'question', label: '質問', testId: 'reflection-question' },
-]
+const REFLECTION_INTERVENTION: {
+  kind: InterventionKind;
+  label: string;
+  testId: string;
+}[] = [
+  { kind: "objection", label: "異議を唱える", testId: "reflection-objection" },
+  { kind: "viewpoint", label: "観点追加", testId: "reflection-add-viewpoint" },
+  { kind: "question", label: "質問", testId: "reflection-question" },
+];
 
 // Reflection Panel (T26/T26残作業): AIによる「足りない視点」「追加すべき人物」の提案は禁止。
 // 認知負荷を最小化するため、現在の論点と「対立構造マップ」(VS表示) のみを示し、
@@ -317,8 +429,8 @@ function ReflectionPanel({
   onSelectIntervention,
 }: ReflectionPanelProps) {
   // 論点は直近2件のみ表示する（古い論点は折り返しなしで切り捨てる）。
-  const blocks = (summary?.blocks ?? []).slice(-2)
-  const [showInterventionChoices, setShowInterventionChoices] = useState(false)
+  const blocks = (summary?.blocks ?? []).slice(-2);
+  const [showInterventionChoices, setShowInterventionChoices] = useState(false);
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -334,11 +446,14 @@ function ReflectionPanel({
           className="mb-6 text-xl font-bold text-slate-100"
           title={currentTopic}
         >
-          現在の論点：{currentTopic || '未設定'}
+          現在の論点：{currentTopic || "未設定"}
         </h2>
 
         {loading ? (
-          <p className="mb-6 text-center text-sm text-slate-400" data-testid="reflection-loading">
+          <p
+            className="mb-6 text-center text-sm text-slate-400"
+            data-testid="reflection-loading"
+          >
             対立構造を読み込み中...
           </p>
         ) : blocks.length > 0 ? (
@@ -346,7 +461,9 @@ function ReflectionPanel({
             {blocks.map((block) => (
               <div key={block.topic} data-testid="reflection-block">
                 {blocks.length > 1 && (
-                  <p className="mb-2 text-center text-xs text-slate-400">{block.topic}</p>
+                  <p className="mb-2 text-center text-xs text-slate-400">
+                    {block.topic}
+                  </p>
                 )}
                 <VsRow stances={block.stances} characters={characters} />
               </div>
@@ -359,7 +476,11 @@ function ReflectionPanel({
               {characters.map((c) => (
                 <li key={c.name} className="flex flex-col items-center">
                   <div className="h-12 w-12 overflow-hidden rounded-full bg-slate-700 ring-2 ring-slate-600">
-                    <img src={c.avatar_url} alt="" className="h-full w-full object-cover" />
+                    <img
+                      src={c.avatar_url}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
                   </div>
                   <span className="mt-1 text-xs text-slate-300">{c.name}</span>
                 </li>
@@ -404,12 +525,12 @@ function ReflectionPanel({
         </div>
       </section>
     </div>
-  )
+  );
 }
 
 interface VsRowProps {
-  stances: ReflectionSummary['blocks'][number]['stances']
-  characters: DebateState['characters']
+  stances: ReflectionSummary["blocks"][number]["stances"];
+  characters: DebateState["characters"];
 }
 
 // 対立構造マップ。
@@ -425,7 +546,7 @@ function VsRow({ stances, characters }: VsRowProps) {
         <span className="shrink-0 text-xs font-bold text-slate-500">VS</span>
         <StanceChip stance={stances[1]} characters={characters} reverse />
       </div>
-    )
+    );
   }
 
   return (
@@ -445,13 +566,13 @@ function VsRow({ stances, characters }: VsRowProps) {
         </Fragment>
       ))}
     </div>
-  )
+  );
 }
 
 interface StanceChipProps {
-  stance: ReflectionSummary['blocks'][number]['stances'][number]
-  characters: DebateState['characters']
-  reverse?: boolean
+  stance: ReflectionSummary["blocks"][number]["stances"][number];
+  characters: DebateState["characters"];
+  reverse?: boolean;
 }
 
 // 立場ごとのチップ。label を太字で強調し、summary はその下に小さめのグレー文字で常時表示する。
@@ -459,12 +580,14 @@ function StanceChip({ stance, characters, reverse }: StanceChipProps) {
   return (
     <div
       data-testid="reflection-stance"
-      className={`flex flex-1 items-center gap-2 ${reverse ? 'flex-row-reverse text-right' : ''}`}
+      className={`flex flex-1 items-center gap-2 ${reverse ? "flex-row-reverse text-right" : ""}`}
     >
       {stance.characters.length > 0 && (
-        <ul className={`flex shrink-0 flex-col -space-y-2 ${reverse ? 'items-end' : 'items-start'}`}>
+        <ul
+          className={`flex shrink-0 flex-col -space-y-2 ${reverse ? "items-end" : "items-start"}`}
+        >
           {stance.characters.map((name) => {
-            const character = characters.find((c) => c.name === name)
+            const character = characters.find((c) => c.name === name);
             return (
               <li
                 key={name}
@@ -472,10 +595,14 @@ function StanceChip({ stance, characters, reverse }: StanceChipProps) {
                 className="h-10 w-10 overflow-hidden rounded-full bg-slate-700 ring-2 ring-slate-900"
               >
                 {character && (
-                  <img src={character.avatar_url} alt={name} className="h-full w-full object-cover" />
+                  <img
+                    src={character.avatar_url}
+                    alt={name}
+                    className="h-full w-full object-cover"
+                  />
                 )}
               </li>
-            )
+            );
           })}
         </ul>
       )}
@@ -484,36 +611,40 @@ function StanceChip({ stance, characters, reverse }: StanceChipProps) {
         <span className="text-sm text-gray-400">{stance.summary}</span>
       </div>
     </div>
-  )
+  );
 }
 
 function ChatHistoryItem({ entry }: { entry: ChatHistoryEntry }) {
-  const isUser = entry.speaker === 'あなた' || entry.speaker === 'User'
+  const isUser = entry.speaker === "あなた" || entry.speaker === "User";
   return (
-    <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+    <div className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
       <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-slate-700">
-        <img src={entry.avatar_url} alt="" className="h-full w-full object-cover" />
+        <img
+          src={entry.avatar_url}
+          alt=""
+          className="h-full w-full object-cover"
+        />
       </div>
-      <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+      <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
         <span className="mb-1 text-xs text-slate-400">{entry.speaker}</span>
         <div
           className={`rounded-2xl px-4 py-2 text-sm ${
             isUser
-              ? 'bg-emerald-600 text-white rounded-tr-sm'
-              : 'bg-slate-700 text-slate-100 rounded-tl-sm'
+              ? "bg-emerald-600 text-white rounded-tr-sm"
+              : "bg-slate-700 text-slate-100 rounded-tl-sm"
           }`}
         >
           {entry.text}
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 interface HeaderProps {
-  theme: string
-  currentTopic: string
-  onOpenHistory?: () => void
+  theme: string;
+  currentTopic: string;
+  onOpenHistory?: () => void;
 }
 
 function Header({ theme, currentTopic, onOpenHistory }: HeaderProps) {
@@ -524,7 +655,7 @@ function Header({ theme, currentTopic, onOpenHistory }: HeaderProps) {
         className="truncate text-sm text-emerald-300"
         title={currentTopic}
       >
-        {currentTopic ? `論点: ${currentTopic}` : '論点: 未設定'}
+        {currentTopic ? `論点: ${currentTopic}` : "論点: 未設定"}
       </p>
       <h1
         data-testid="header-theme"
@@ -545,11 +676,11 @@ function Header({ theme, currentTopic, onOpenHistory }: HeaderProps) {
         </button>
       </div>
     </header>
-  )
+  );
 }
 
 interface PointsPanelProps {
-  points: string[]
+  points: string[];
 }
 
 function PointsPanel({ points }: PointsPanelProps) {
@@ -557,17 +688,17 @@ function PointsPanel({ points }: PointsPanelProps) {
   // ショットを `previousPoints` に退避して再描画する。マウント直後は previousPoints
   // = points なので「全てが NEW」扱いにならない（初回描画で過剰演出しない）。
   // React 19 の react-hooks/refs ルール対策で useRef ではなく useState を使う。
-  const [renderedPoints, setRenderedPoints] = useState<string[]>(points)
-  const [previousPoints, setPreviousPoints] = useState<string[]>(points)
+  const [renderedPoints, setRenderedPoints] = useState<string[]>(points);
+  const [previousPoints, setPreviousPoints] = useState<string[]>(points);
   if (renderedPoints !== points) {
-    setPreviousPoints(renderedPoints)
-    setRenderedPoints(points)
+    setPreviousPoints(renderedPoints);
+    setRenderedPoints(points);
   }
 
-  const previousSet = new Set(previousPoints)
-  const currentSet = new Set(points)
-  const newItems = points.filter((p) => !previousSet.has(p))
-  const removedItems = previousPoints.filter((p) => !currentSet.has(p))
+  const previousSet = new Set(previousPoints);
+  const currentSet = new Set(points);
+  const newItems = points.filter((p) => !previousSet.has(p));
+  const removedItems = previousPoints.filter((p) => !currentSet.has(p));
 
   return (
     <aside
@@ -575,7 +706,9 @@ function PointsPanel({ points }: PointsPanelProps) {
       className="w-56 shrink-0 rounded-lg border border-slate-700 bg-slate-800/40 p-4"
     >
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-xs uppercase tracking-wider text-slate-400">論点</h2>
+        <h2 className="text-xs uppercase tracking-wider text-slate-400">
+          論点
+        </h2>
         <DiffBadge added={newItems.length} removed={removedItems.length} />
       </div>
       {points.length === 0 ? (
@@ -584,34 +717,28 @@ function PointsPanel({ points }: PointsPanelProps) {
         <ul data-testid="points-list" className="space-y-2">
           <AnimatePresence initial={false}>
             {points.map((p) => {
-              const isNew = !previousSet.has(p)
-              return (
-                <PointItem
-                  key={p}
-                  point={p}
-                  isNew={isNew}
-                />
-              )
+              const isNew = !previousSet.has(p);
+              return <PointItem key={p} point={p} isNew={isNew} />;
             })}
           </AnimatePresence>
         </ul>
       )}
     </aside>
-  )
+  );
 }
 
 interface PointItemProps {
-  point: string
-  isNew: boolean
+  point: string;
+  isNew: boolean;
 }
 
 function PointItem({ point, isNew }: PointItemProps) {
-  const isPresent = useIsPresent()
+  const isPresent = useIsPresent();
   return (
     <motion.li
       layout
       data-testid="points-item"
-      data-state={isPresent ? (isNew ? 'new' : 'kept') : 'removing'}
+      data-state={isPresent ? (isNew ? "new" : "kept") : "removing"}
       initial={
         isNew
           ? {
@@ -630,37 +757,37 @@ function PointItem({ point, isNew }: PointItemProps) {
         backgroundColor: POINTS_KEPT_BG,
         boxShadow: POINTS_NO_BOX_SHADOW,
         transition: {
-          opacity: { duration: POINTS_ENTER_DURATION, ease: 'easeOut' },
-          x: { duration: POINTS_ENTER_DURATION, ease: 'easeOut' },
+          opacity: { duration: POINTS_ENTER_DURATION, ease: "easeOut" },
+          x: { duration: POINTS_ENTER_DURATION, ease: "easeOut" },
           // 新規は spring で「ポンッ」と入場
           scale: isNew
-            ? { type: 'spring', stiffness: 320, damping: 14 }
-            : { duration: POINTS_ENTER_DURATION, ease: 'easeOut' },
-          backgroundColor: { duration: POINTS_GLOW_DURATION, ease: 'easeOut' },
-          boxShadow: { duration: POINTS_GLOW_DURATION, ease: 'easeOut' },
+            ? { type: "spring", stiffness: 320, damping: 14 }
+            : { duration: POINTS_ENTER_DURATION, ease: "easeOut" },
+          backgroundColor: { duration: POINTS_GLOW_DURATION, ease: "easeOut" },
+          boxShadow: { duration: POINTS_GLOW_DURATION, ease: "easeOut" },
         },
       }}
       exit={{
         opacity: 0,
         x: 32,
         scale: 0.92,
-        transition: { duration: POINTS_EXIT_DURATION, ease: 'easeIn' },
+        transition: { duration: POINTS_EXIT_DURATION, ease: "easeIn" },
       }}
       className="relative flex items-center gap-2 overflow-hidden rounded px-3 py-2 text-sm"
-      style={{ willChange: 'transform, opacity, box-shadow, background-color' }}
+      style={{ willChange: "transform, opacity, box-shadow, background-color" }}
     >
       <span
         className={
           isPresent
-            ? 'flex-1 text-slate-100'
-            : 'flex-1 text-rose-200 line-through decoration-rose-400 decoration-2'
+            ? "flex-1 text-slate-100"
+            : "flex-1 text-rose-200 line-through decoration-rose-400 decoration-2"
         }
       >
         {point}
       </span>
       {isNew && isPresent && <NewBadge />}
     </motion.li>
-  )
+  );
 }
 
 function NewBadge() {
@@ -674,23 +801,23 @@ function NewBadge() {
       }}
       transition={{
         duration: POINTS_NEW_HIGHLIGHT_DURATION,
-        ease: 'easeOut',
+        ease: "easeOut",
         times: [0, 0.1, 0.75, 1],
       }}
       className="rounded-full bg-emerald-400 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-slate-900"
     >
       New
     </motion.span>
-  )
+  );
 }
 
 interface DiffBadgeProps {
-  added: number
-  removed: number
+  added: number;
+  removed: number;
 }
 
 function DiffBadge({ added, removed }: DiffBadgeProps) {
-  if (added === 0 && removed === 0) return null
+  if (added === 0 && removed === 0) return null;
   return (
     <motion.span
       key={`${added}-${removed}`}
@@ -699,7 +826,7 @@ function DiffBadge({ added, removed }: DiffBadgeProps) {
       animate={{ opacity: [0, 1, 1, 0], y: [-4, 0, 0, -4] }}
       transition={{
         duration: POINTS_NEW_HIGHLIGHT_DURATION,
-        ease: 'easeOut',
+        ease: "easeOut",
         times: [0, 0.15, 0.75, 1],
       }}
       className="flex items-center gap-1 text-[10px] font-bold"
@@ -707,20 +834,22 @@ function DiffBadge({ added, removed }: DiffBadgeProps) {
       {added > 0 && <span className="text-emerald-300">+{added}</span>}
       {removed > 0 && <span className="text-rose-300">−{removed}</span>}
     </motion.span>
-  )
+  );
 }
 
 interface CharactersRowProps {
-  characters: DebateState['characters']
-  isActive: (name: string) => boolean
-  status: DebateStatus
-  userName: string
-  userAvatarUrl: string
-  emotion: string
+  characters: DebateState["characters"];
+  isActive: (name: string) => boolean;
+  status: DebateStatus;
+  userName: string;
+  userAvatarUrl: string;
+  emotion: string;
+  agentThoughts?: Record<string, AgentThought>;
+  isUserActive?: boolean;
 }
 
 function EmotionEffect({ emotion }: { emotion: string }) {
-  if (emotion === 'happy') {
+  if (emotion === "happy") {
     return (
       <motion.div
         initial={{ opacity: 0, y: 10, scale: 0.5 }}
@@ -730,9 +859,9 @@ function EmotionEffect({ emotion }: { emotion: string }) {
       >
         ✨
       </motion.div>
-    )
+    );
   }
-  if (emotion === 'angry') {
+  if (emotion === "angry") {
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.8 }}
@@ -742,9 +871,9 @@ function EmotionEffect({ emotion }: { emotion: string }) {
       >
         💢
       </motion.div>
-    )
+    );
   }
-  if (emotion === 'sad') {
+  if (emotion === "sad") {
     return (
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -754,9 +883,9 @@ function EmotionEffect({ emotion }: { emotion: string }) {
       >
         💧
       </motion.div>
-    )
+    );
   }
-  if (emotion === 'surprised') {
+  if (emotion === "surprised") {
     return (
       <motion.div
         initial={{ opacity: 0, y: 10, scale: 0.5 }}
@@ -766,9 +895,9 @@ function EmotionEffect({ emotion }: { emotion: string }) {
       >
         ❗️
       </motion.div>
-    )
+    );
   }
-  if (emotion === 'thinking') {
+  if (emotion === "thinking") {
     return (
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -778,9 +907,9 @@ function EmotionEffect({ emotion }: { emotion: string }) {
       >
         ❓
       </motion.div>
-    )
+    );
   }
-  if (emotion === 'confident') {
+  if (emotion === "confident") {
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.8, rotate: -15 }}
@@ -790,9 +919,9 @@ function EmotionEffect({ emotion }: { emotion: string }) {
       >
         🌟
       </motion.div>
-    )
+    );
   }
-  if (emotion === 'confused') {
+  if (emotion === "confused") {
     return (
       <motion.div
         initial={{ opacity: 0, rotate: 0 }}
@@ -802,9 +931,9 @@ function EmotionEffect({ emotion }: { emotion: string }) {
       >
         🌀
       </motion.div>
-    )
+    );
   }
-  return null
+  return null;
 }
 
 // 立ち絵サイズの命名定数（CONSTRAINTS.md: マジックナンバー禁止）。
@@ -813,10 +942,19 @@ function EmotionEffect({ emotion }: { emotion: string }) {
 // 列幅は flex-1 で均等分配（=横並びの基準点）するが、画像は列の幅に縛られず
 // はみ出して隣のキャラと重なってよい（ユーザー要望: 横で重なるのは構わない）。
 // shrink-0 のユーザー列が常に右端を確保するので、user 丸は画面外に出ない。
-const STANDEE_MAX_COL_WIDTH = 360
-const USER_AVATAR_SIZE = 'h-40 w-40'
+const STANDEE_MAX_COL_WIDTH = 360;
+const USER_AVATAR_SIZE = "h-40 w-40";
 
-function CharactersRow({ characters, isActive, status, userName, userAvatarUrl, emotion }: CharactersRowProps) {
+function CharactersRow({
+  characters,
+  isActive,
+  status,
+  userName,
+  userAvatarUrl,
+  emotion,
+  agentThoughts,
+  isUserActive,
+}: CharactersRowProps) {
   return (
     <div
       data-testid="stage-row"
@@ -825,7 +963,10 @@ function CharactersRow({ characters, isActive, status, userName, userAvatarUrl, 
       {/* min-w-0 を付けて flex-1 が確実に「親 - user 幅」内に収まるようにする */}
       <ul className="flex items-end justify-center gap-0 flex-1 min-w-0 h-full">
         {characters.map((c, i) => {
-          const active = isActive(c.name)
+          const active = isActive(c.name);
+          const thought = agentThoughts?.[c.name];
+          const isWilling = thought?.willingness_to_speak;
+
           // 各列は flex-1 min-w-0 で「立ち位置」のスロットを均等に分配する。
           // 立ち絵自体は absolute + h-full w-auto で自然な縦長アスペクト比のまま
           // 縦幅を統一して描画される（列幅より広ければ隣にはみ出す）。
@@ -833,19 +974,36 @@ function CharactersRow({ characters, isActive, status, userName, userAvatarUrl, 
             <motion.li
               key={c.name}
               data-testid="stage-character"
-              data-active={active ? 'true' : 'false'}
+              data-active={active ? "true" : "false"}
               initial={false}
               animate={active ? { y: [0, -22, 0] } : { y: 0 }}
-              transition={active ? { repeat: Infinity, duration: 2.5, ease: "easeInOut" } : {}}
+              transition={
+                active
+                  ? { repeat: Infinity, duration: 2.5, ease: "easeInOut" }
+                  : {}
+              }
               className="relative flex flex-col items-center justify-end flex-1 min-w-0 h-full transition-all duration-300 ease-out"
               style={{
                 zIndex: active ? 30 : 10 + i,
-                filter: active ? 'none' : 'brightness(0.55) grayscale(0.25)',
-                transform: active ? 'scale(1.06)' : 'scale(0.94)',
+                filter: active ? "none" : "brightness(0.55) grayscale(0.25)",
+                transform: active ? "scale(1.06)" : "scale(0.94)",
                 maxWidth: `${STANDEE_MAX_COL_WIDTH}px`,
               }}
             >
               {active && <EmotionEffect emotion={emotion} />}
+
+              {/* 発言意欲のインジケーター (T63) */}
+              {status === "thinking" && isWilling && (
+                <motion.div
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="absolute right-0 top-1/4 flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 shadow-lg z-40"
+                  title="発言したい！"
+                >
+                  <span className="text-xl">✋</span>
+                </motion.div>
+              )}
+
               {/* 立ち絵描画ボックス: 列の中で 100% 高、絶対配置の img が中央下から立ち上がる */}
               <div className="relative w-full h-full overflow-visible drop-shadow-2xl">
                 <img
@@ -867,35 +1025,59 @@ function CharactersRow({ characters, isActive, status, userName, userAvatarUrl, 
                 )}
               </div>
             </motion.li>
-          )
+          );
         })}
       </ul>
 
       {/* User avatar is fixed at the far right. shrink-0 で潰れず、ml-* で並びから少し離す */}
-      <div data-testid="stage-user" className="flex flex-col items-center relative z-20 shrink-0 ml-2 mb-4">
-        <div className={`${USER_AVATAR_SIZE} overflow-hidden rounded-full bg-slate-700 ring-4 ring-amber-300 shadow-[0_0_24px_rgba(251,191,36,0.45)]`}>
+      <div
+        data-testid="stage-user"
+        className={[
+          "flex flex-col items-center relative z-20 shrink-0 ml-2 mb-4 transition-all duration-300 ease-out",
+          isUserActive ? "scale-105" : "scale-95 opacity-80",
+        ].join(" ")}
+      >
+        <div
+          className={`${USER_AVATAR_SIZE} overflow-hidden rounded-full bg-slate-700 ring-4 ${isUserActive ? "ring-amber-300 shadow-[0_0_32px_rgba(251,191,36,0.5)]" : "ring-slate-600 shadow-none"}`}
+        >
           <img
             src={userAvatarUrl}
             alt=""
             className="h-full w-full object-cover"
           />
         </div>
-        <div className="mt-3 bg-slate-900/80 px-4 py-1 rounded-full border border-amber-500/50">
-          <p className="text-sm font-semibold text-amber-200">{userName}</p>
+        <div
+          className={`mt-3 bg-slate-900/80 px-4 py-1 rounded-full border ${isUserActive ? "border-amber-500/50" : "border-slate-700"}`}
+        >
+          <p
+            className={`text-sm font-semibold ${isUserActive ? "text-amber-200" : "text-slate-400"}`}
+          >
+            {userName}
+          </p>
         </div>
+        {isUserActive && (
+          <span className="mt-1 text-[10px] text-amber-300 uppercase tracking-wider">
+            {isUserActive && !isActive(userName)
+              ? "入力中..."
+              : status === "speaking"
+                ? "発言中"
+                : "待機中"}
+          </span>
+        )}
       </div>
     </div>
-  )
+  );
 }
 
 interface TelopBoxProps {
-  speaker: string
-  speech: string
-  status: DebateStatus
-  intervention: InterventionKind | null
-  onCancel: () => void
-  onSubmit: (text: string) => void
-  userName?: string
+  speaker: string;
+  speech: string;
+  status: DebateStatus;
+  intervention: InterventionKind | null;
+  onCancel: () => void;
+  onSubmit: (text: string) => void;
+  userName?: string;
+  agentThoughts?: Record<string, AgentThought>;
 }
 
 function TelopBox({
@@ -905,64 +1087,68 @@ function TelopBox({
   intervention,
   onCancel,
   onSubmit,
-  userName = 'あなた',
+  userName = "あなた",
+  agentThoughts,
 }: TelopBoxProps) {
-  const empty = speech.trim().length === 0
-  const [draft, setDraft] = useState('')
-  const [isPlaying, setIsPlaying] = useState(false)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const empty = speech.trim().length === 0;
+  const [draft, setDraft] = useState("");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // 音声再生ロジック
   useEffect(() => {
     // 既存の音声を停止
     if (audioRef.current) {
-      audioRef.current.pause()
-      audioRef.current.src = ""
-      audioRef.current = null
-      setIsPlaying(false)
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current = null;
+      setIsPlaying(false);
     }
 
     // AIの発言かつ発言が存在する場合のみ自動再生を試みる
     if (!empty && speaker && speaker !== USER_SPEAKER && speaker !== userName) {
-      const url = `${API_BASE_URL}/api/tts?text=${encodeURIComponent(speech)}&character_name=${encodeURIComponent(speaker)}`
-      const audio = new Audio(url)
-      audioRef.current = audio
-      
-      audio.onended = () => setIsPlaying(false)
-      audio.onpause = () => setIsPlaying(false)
-      audio.onplay = () => setIsPlaying(true)
-      
+      const url = `${API_BASE_URL}/api/tts?text=${encodeURIComponent(speech)}&character_name=${encodeURIComponent(speaker)}`;
+      const audio = new Audio(url);
+      audioRef.current = audio;
+
+      audio.onended = () => setIsPlaying(false);
+      audio.onpause = () => setIsPlaying(false);
+      audio.onplay = () => setIsPlaying(true);
+
       audio.play().catch((err) => {
-        console.error("TTS autoplay failed (usually due to browser policy):", err)
-        setIsPlaying(false)
-      })
+        console.error(
+          "TTS autoplay failed (usually due to browser policy):",
+          err,
+        );
+        setIsPlaying(false);
+      });
     }
-    
+
     return () => {
       if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current.src = ""
-        audioRef.current = null
+        audioRef.current.pause();
+        audioRef.current.src = "";
+        audioRef.current = null;
       }
-    }
-  }, [speech, speaker, userName, empty])
+    };
+  }, [speech, speaker, userName, empty]);
 
   const handlePlayClick = () => {
     if (audioRef.current) {
       if (isPlaying) {
-        audioRef.current.pause()
-        audioRef.current.currentTime = 0
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
       } else {
-        audioRef.current.currentTime = 0
-        audioRef.current.play().catch(console.error)
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch(console.error);
       }
     }
-  }
+  };
 
-  const isUserSpeaker = speaker === USER_SPEAKER || speaker === userName
+  const isUserSpeaker = speaker === USER_SPEAKER || speaker === userName;
 
   if (intervention) {
-    const label = INTERVENTION_LABEL[intervention]
+    const label = INTERVENTION_LABEL[intervention];
     return (
       <section
         data-testid="stage-telop"
@@ -981,14 +1167,14 @@ function TelopBox({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault()
-              setDraft('')
-              onCancel()
-            } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault()
-              onSubmit(draft)
-              setDraft('')
+            if (e.key === "Escape") {
+              e.preventDefault();
+              setDraft("");
+              onCancel();
+            } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              onSubmit(draft);
+              setDraft("");
             }
           }}
           placeholder={`${label}を入力（Cmd/Ctrl+Enter で送信、Esc でキャンセル）`}
@@ -999,8 +1185,8 @@ function TelopBox({
             type="button"
             data-testid="intervention-cancel"
             onClick={() => {
-              setDraft('')
-              onCancel()
+              setDraft("");
+              onCancel();
             }}
             className="rounded-md border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:border-slate-400 hover:text-slate-100"
           >
@@ -1011,8 +1197,8 @@ function TelopBox({
             data-testid="intervention-submit"
             disabled={draft.trim().length === 0}
             onClick={() => {
-              onSubmit(draft)
-              setDraft('')
+              onSubmit(draft);
+              setDraft("");
             }}
             className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400"
           >
@@ -1020,7 +1206,7 @@ function TelopBox({
           </button>
         </div>
       </section>
-    )
+    );
   }
 
   return (
@@ -1029,11 +1215,21 @@ function TelopBox({
       className="mx-auto mt-6 w-full max-w-3xl rounded-2xl border-2 border-slate-600 bg-slate-800/90 px-8 py-6 shadow-2xl"
     >
       {empty ? (
-        <p className="text-slate-400" data-testid="telop-empty">
-          {status === 'thinking'
-            ? `${speaker || 'AI'} が思考中...`
-            : '議論が始まるのを待っています...'}
-        </p>
+        <div className="flex flex-col gap-1" data-testid="telop-empty">
+          <p className="text-slate-400">
+            {status === "thinking"
+              ? Object.keys(agentThoughts || {}).length > 0
+                ? "発言の準備が整いました"
+                : "AIたちが思考中..."
+              : "議論が始まるのを待っています..."}
+          </p>
+          {status === "thinking" &&
+            Object.keys(agentThoughts || {}).length > 0 && (
+              <p className="text-xs text-emerald-400 animate-pulse">
+                「次へ」を押して議論を再開してください
+              </p>
+            )}
+        </div>
       ) : (
         <>
           <div className="mb-2 flex items-center justify-between">
@@ -1055,15 +1251,50 @@ function TelopBox({
                 {isPlaying ? (
                   <div className="flex items-center gap-1.5">
                     <div className="flex items-center justify-center gap-0.5 h-3">
-                      <motion.div className="w-[2px] bg-emerald-400 rounded-full" animate={{ height: ['4px', '12px', '4px'] }} transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut" }} />
-                      <motion.div className="w-[2px] bg-emerald-400 rounded-full" animate={{ height: ['8px', '16px', '8px'] }} transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut", delay: 0.2 }} />
-                      <motion.div className="w-[2px] bg-emerald-400 rounded-full" animate={{ height: ['4px', '10px', '4px'] }} transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut", delay: 0.4 }} />
+                      <motion.div
+                        className="w-[2px] bg-emerald-400 rounded-full"
+                        animate={{ height: ["4px", "12px", "4px"] }}
+                        transition={{
+                          duration: 0.8,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                        }}
+                      />
+                      <motion.div
+                        className="w-[2px] bg-emerald-400 rounded-full"
+                        animate={{ height: ["8px", "16px", "8px"] }}
+                        transition={{
+                          duration: 0.8,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                          delay: 0.2,
+                        }}
+                      />
+                      <motion.div
+                        className="w-[2px] bg-emerald-400 rounded-full"
+                        animate={{ height: ["4px", "10px", "4px"] }}
+                        transition={{
+                          duration: 0.8,
+                          repeat: Infinity,
+                          ease: "easeInOut",
+                          delay: 0.4,
+                        }}
+                      />
                     </div>
                     <span className="text-emerald-400">再生中</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
                       <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
                       <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
                       <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
@@ -1083,18 +1314,18 @@ function TelopBox({
         </>
       )}
     </section>
-  )
+  );
 }
 
 interface ActionBarProps {
-  intervention: InterventionKind | null
-  onSelectIntervention: (kind: InterventionKind) => void
-  interventionEnabled: boolean
-  addCharacterEnabled: boolean
-  onOpenAddCharacter: () => void
-  summarizeEnabled: boolean
-  isSummarizing: boolean
-  onSummarize: () => void
+  intervention: InterventionKind | null;
+  onSelectIntervention: (kind: InterventionKind) => void;
+  interventionEnabled: boolean;
+  addCharacterEnabled: boolean;
+  onOpenAddCharacter: () => void;
+  summarizeEnabled: boolean;
+  isSummarizing: boolean;
+  onSummarize: () => void;
 }
 
 function ActionBar({
@@ -1107,9 +1338,14 @@ function ActionBar({
   isSummarizing,
   onSummarize,
 }: ActionBarProps) {
-  const interventionButtonsDisabled = !interventionEnabled || intervention !== null
+  const interventionButtonsDisabled =
+    !interventionEnabled || intervention !== null;
 
-  const interventionButton = (kind: InterventionKind, label: string, testId: string) => (
+  const interventionButton = (
+    kind: InterventionKind,
+    label: string,
+    testId: string,
+  ) => (
     <button
       type="button"
       data-testid={testId}
@@ -1119,7 +1355,7 @@ function ActionBar({
     >
       {label}
     </button>
-  )
+  );
 
   return (
     <nav
@@ -1135,9 +1371,9 @@ function ActionBar({
       >
         人物追加
       </button>
-      {interventionButton('objection', '異議を唱える', 'action-objection')}
-      {interventionButton('viewpoint', '観点追加', 'action-viewpoint')}
-      {interventionButton('question', '質問', 'action-question')}
+      {interventionButton("objection", "異議を唱える", "action-objection")}
+      {interventionButton("viewpoint", "観点追加", "action-viewpoint")}
+      {interventionButton("question", "質問", "action-question")}
       <button
         type="button"
         data-testid="action-summarize"
@@ -1145,41 +1381,45 @@ function ActionBar({
         disabled={!summarizeEnabled || intervention !== null || isSummarizing}
         className="rounded-md border border-emerald-500 bg-emerald-600/10 px-4 py-2 text-sm font-semibold text-emerald-200 hover:border-emerald-300 hover:bg-emerald-500/20 hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {isSummarizing ? '整理中...' : '議論を整理する'}
+        {isSummarizing ? "整理中..." : "議論を整理する"}
       </button>
     </nav>
-  )
+  );
 }
 
 interface AddCharacterModalProps {
-  existingNames: string[]
-  onClose: () => void
-  onCreated: (character: Character) => void | Promise<void>
+  existingNames: string[];
+  onClose: () => void;
+  onCreated: (character: Character) => void | Promise<void>;
 }
 
-function AddCharacterModal({ existingNames, onClose, onCreated }: AddCharacterModalProps) {
-  const [name, setName] = useState('')
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+function AddCharacterModal({
+  existingNames,
+  onClose,
+  onCreated,
+}: AddCharacterModalProps) {
+  const [name, setName] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const trimmed = name.trim()
-  const isDuplicate = existingNames.includes(trimmed)
-  const canSubmit = trimmed.length > 0 && !isDuplicate && !isSubmitting
+  const trimmed = name.trim();
+  const isDuplicate = existingNames.includes(trimmed);
+  const canSubmit = trimmed.length > 0 && !isDuplicate && !isSubmitting;
 
   const submit = async () => {
-    if (!canSubmit) return
-    setError(null)
-    setIsSubmitting(true)
+    if (!canSubmit) return;
+    setError(null);
+    setIsSubmitting(true);
     try {
-      const { avatar_url } = await addCharacter(trimmed)
-      await onCreated({ name: trimmed, avatar_url })
+      const { avatar_url } = await addCharacter(trimmed);
+      await onCreated({ name: trimmed, avatar_url });
     } catch (err) {
-      console.error(err)
-      setError('アバター生成に失敗しました。時間をおいて再試行してください。')
+      console.error(err);
+      setError("アバター生成に失敗しました。時間をおいて再試行してください。");
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   return (
     <div
@@ -1190,11 +1430,13 @@ function AddCharacterModal({ existingNames, onClose, onCreated }: AddCharacterMo
         data-testid="add-character-overlay"
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={() => {
-          if (!isSubmitting) onClose()
+          if (!isSubmitting) onClose();
         }}
       />
       <div className="relative w-full max-w-md rounded-2xl border border-slate-600 bg-slate-800 p-6 shadow-2xl">
-        <h2 className="mb-1 text-lg font-semibold text-slate-100">人物を追加</h2>
+        <h2 className="mb-1 text-lg font-semibold text-slate-100">
+          人物を追加
+        </h2>
         <p className="mb-4 text-xs text-slate-400">
           名前を入力すると、アバターを生成してステージに追加します。
         </p>
@@ -1212,12 +1454,12 @@ function AddCharacterModal({ existingNames, onClose, onCreated }: AddCharacterMo
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault()
-              if (!isSubmitting) onClose()
-            } else if (e.key === 'Enter') {
-              e.preventDefault()
-              void submit()
+            if (e.key === "Escape") {
+              e.preventDefault();
+              if (!isSubmitting) onClose();
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              void submit();
             }
           }}
           disabled={isSubmitting}
@@ -1233,7 +1475,10 @@ function AddCharacterModal({ existingNames, onClose, onCreated }: AddCharacterMo
           </p>
         )}
         {error && (
-          <p data-testid="add-character-error" className="mt-2 text-xs text-rose-300">
+          <p
+            data-testid="add-character-error"
+            className="mt-2 text-xs text-rose-300"
+          >
             {error}
           </p>
         )}
@@ -1254,10 +1499,10 @@ function AddCharacterModal({ existingNames, onClose, onCreated }: AddCharacterMo
             disabled={!canSubmit}
             className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400"
           >
-            {isSubmitting ? '生成中...' : '追加'}
+            {isSubmitting ? "生成中..." : "追加"}
           </button>
         </div>
       </div>
     </div>
-  )
+  );
 }

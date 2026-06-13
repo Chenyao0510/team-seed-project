@@ -11,6 +11,7 @@ CONSTRAINTS.md: API キーはここで一度だけ読み込み、コードへの
 """
 
 import json
+import time
 
 from google import genai
 from google.genai import types
@@ -26,7 +27,13 @@ from app.config import (
     SUMMARIZE_TIMEOUT_SECONDS,
     TEXT_MODEL,
 )
-from app.models import DebateState, IntegrationState, NextTurnLLMOutput, ReflectionSummary
+from app.models import (
+    AgentThoughtOutput,
+    DebateState,
+    IntegrationState,
+    NextTurnLLMOutput,
+    ReflectionSummary,
+)
 
 _client: genai.Client | None = None
 
@@ -87,6 +94,33 @@ def generate_avatar_image(
                 return part.inline_data.data
 
     raise ValueError("Gemini image response did not contain inline image data")
+
+
+def generate_agent_thought(state: DebateState, character_name: str) -> AgentThoughtOutput:
+    """各キャラクターに対して個別に次のターンでの思考を構造化生成する。"""
+    prompt = _build_agent_thought_prompt(state, character_name)
+
+    max_retries = 2
+    for attempt in range(max_retries + 1):
+        try:
+            response = _get_client().models.generate_content(
+                model=TEXT_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=AgentThoughtOutput,
+                    http_options=types.HttpOptions(timeout=NEXT_TURN_TIMEOUT_SECONDS * 1000),
+                ),
+            )
+            text = (response.text or "").strip()
+            if not text:
+                raise ValueError("Gemini agent_thought response was empty")
+            return AgentThoughtOutput.model_validate(json.loads(text))
+        except Exception as e:
+            if attempt < max_retries:
+                time.sleep(1.0 * (attempt + 1))
+            else:
+                raise e
 
 
 def generate_next_turn(state: DebateState) -> NextTurnLLMOutput:
@@ -192,6 +226,49 @@ def _build_reflection_prompt(state: DebateState) -> str:
     )
 
 
+def _build_agent_thought_prompt(state: DebateState, character_name: str) -> str:
+    roster = "、".join(c.name for c in state.characters)
+    history_lines = [
+        f"{m.speaker}: {m.text}" for m in state.chat_history[-CHAT_HISTORY_PROMPT_LIMIT:]
+    ]
+    history_text = "\n".join(history_lines) if history_lines else "(まだ発言はありません)"
+    points_text = "、".join(state.current_points) if state.current_points else "(まだなし)"
+
+    return (
+        f"あなたは討論番組の参加者「{character_name}」です。\n"
+        "以下の討論の状況をもとに、自分が今発言すべきか（発言したいか）を考え、"
+        "もし発言するなら何を言うか出力してください。\n\n"
+        f"テーマ: {state.theme}\n"
+        f"現在の論点: {state.current_topic}\n"
+        f"登場人物（roster）: {roster}\n"
+        f"直前の発言者: {state.active_character}\n"
+        f"これまでの発言ログ:\n{history_text}\n"
+        f"現在の論点リスト: {points_text}\n\n"
+        "ルール:\n"
+        "- willingness_to_speak: 発言ログの文脈から、今あなたが発言すべきなら true、"
+        "他の人に任せるべき・連続発言になる等の場合は false にすること。\n"
+        "- thought: 今の議論の流れ、他者の意見、および自分の立場をどう捉えているか、"
+        "なぜ発言する（あるいは控える）のかという思考プロセスを30〜50文字程度の日本語で。\n"
+        "- 発言ログの末尾があなた自身である場合、特別な理由がない限り"
+        "連続発言は避ける(false にする)こと。\n"
+        "- 発言ログの末尾の発言者が roster に含まれない場合、それはユーザーからの介入"
+        "（異議・観点・質問）です。あなたは「ユーザー（あなた）」の主張を自分自身のものと"
+        "して扱わず、あくまで外部からの新しい視点に対する反応として述べてください。"
+        "「私の〜という観点は」のように、ユーザーの意見を自分のものとして主張してはいけません。\n"
+        "- current_speech: もし発言するなら、あなたの口調・立場・視点を反映した、"
+        "1〜3文の日本語の発言。\n"
+        "- current_points: 議論全体を通じた論点リスト（3〜5個の簡潔な名詞句）。\n"
+        "  1ターンでの変更は最小限にすること:\n"
+        "    * 追加は最大1個まで（今回の発言で新しく浮上した論点のみ）\n"
+        "    * 削除/差し替えも最大1個まで（既に役割を終えた論点があれば差し替える）\n"
+        "    * 変更しない論点は前ターンの文字列をそのまま再利用すること\n"
+        "    * 順序も前ターンの並び順を尊重し、新規論点はリスト末尾に追加すること\n"
+        "- current_topic: 現在議論されている小テーマを、名詞句を「/」で区切った"
+        "10〜20文字程度の短い表現にすること。\n"
+        "- emotion: 発言内容に合わせた表情を neutral, happy, sad, angry, surprised, thinking から選んでください。\n"
+    )
+
+
 def _build_next_turn_prompt(state: DebateState) -> str:
     roster = "、".join(c.name for c in state.characters)
     # 履歴行に emotion を含める。Gemini に「直近で使われた感情」を見せて
@@ -203,9 +280,7 @@ def _build_next_turn_prompt(state: DebateState) -> str:
     history_text = "\n".join(history_lines) if history_lines else "(まだ発言はありません)"
     points_text = "、".join(state.current_points) if state.current_points else "(まだなし)"
     recent_emotions = [m.emotion for m in state.chat_history[-3:] if m.emotion]
-    recent_emotions_text = (
-        "、".join(recent_emotions) if recent_emotions else "(まだなし)"
-    )
+    recent_emotions_text = "、".join(recent_emotions) if recent_emotions else "(まだなし)"
 
     return (
         "あなたは討論番組の進行役です。以下の討論の状況をもとに、次に発言する人物を1人選び、"
@@ -254,14 +329,11 @@ def _build_next_turn_prompt(state: DebateState) -> str:
 def _build_summarize_prompt(state: DebateState) -> str:
     roster_names = {c.name for c in state.characters}
     history_lines = [
-        f"{m.speaker}: {m.text}"
-        for m in state.chat_history[-SUMMARIZE_HISTORY_PROMPT_LIMIT:]
+        f"{m.speaker}: {m.text}" for m in state.chat_history[-SUMMARIZE_HISTORY_PROMPT_LIMIT:]
     ]
     history_text = "\n".join(history_lines) if history_lines else "(発言ログなし)"
     user_lines = [
-        f"{m.speaker}: {m.text}"
-        for m in state.chat_history
-        if m.speaker not in roster_names
+        f"{m.speaker}: {m.text}" for m in state.chat_history if m.speaker not in roster_names
     ]
     user_text = "\n".join(user_lines) if user_lines else "(ユーザー介入なし)"
     points_text = "、".join(state.current_points) if state.current_points else "(なし)"

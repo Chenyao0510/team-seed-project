@@ -92,8 +92,15 @@
   - 実績: 
     - `DebateStage.tsx` に `isHistoryOpen` stateと、右側からスライドインするDrawer UIを追加。`chat_history` の内容をLINE風（ユーザーは右配置＋緑吹き出し、AIは左配置＋グレー吹き出し）で表示するように実装。
     - また、会話を開始・進行するための処理を実装。初期状態で発言がない場合は自動的に `nextTurn` APIを叩き、以降は「次へ」ボタンで進行できるようにした。
-- [ ] **T23** `[Front]`: 介入アクション（異議・観点・質問）の入力モード実装
+- [x] **T23** `[Front]`: 介入アクション（異議・観点・質問）の入力モード実装
   - 検証基準: キーボード入力が中央テロップに表示され、Stateに追記される
+  - 実績: 2026-06-13 実装完了。`DebateStage.tsx` に `ActionBar`（人物追加/異議を唱える/観点追加/質問/議論を整理する）を追加。
+    人物追加・議論を整理するは T25/T31 までの無効プレースホルダー。異議・観点・質問クリックでテロップが
+    `textarea` の入力モードに切替（見出し `あなた（{種別}）`、Cmd/Ctrl+Enter で送信・Esc でキャンセル）。
+    送信時に `active_character: 'あなた'` / `current_speech: '（{種別}）{入力文}'` / `status: 'speaking'`
+    で State を更新（`onIntervene` callback、`App.tsx` で配線）。`chat_history` への直接追記は行わず、
+    D11 の `/api/next_turn` 側アーカイブ・roster外発言への反応ロジックに委ねる設計（スキーマ変更なし）。
+    `make verify-all` グリーン、`?mock=debate` で playwright による動作確認済（入力表示・State反映・キャンセル）。
 - [x] **T24** `[Back]`: `/api/next_turn` 実装（State 受け取り → Gemini JSON構造化生成 → State 返却）
   - 検証基準: LangGraphなしで、Geminiが正しく次のキャラと発言、論点リストを更新して返す（pytest で `backend/tests/fixtures` のサンプルから検証）
   - 実績: 2026-06-13 実装完了。`backend/app/models.py` に `DebateState` 系 pydantic モデルと
@@ -109,12 +116,53 @@
   - Front: モーダル UI + `/api/add_character` 叩き + ステージへの追加描画
   - Back: T12 のパイプラインを再利用（API 変更なし）
   - 検証基準: 討論途中で名前を入力し、新規キャラがステージに追加されること
+- [ ] **T26** `[Front]`: Reflection Turn UI（介入の余白表示）
+  - 目的:
+    - ユーザーへ介入を強制しない
+    - AIから次の視点を誘導しない
+    - 現在の議論構造を可視化し、人間が介入するか継続するかを選択できる状態を作る
+  - 実装:
+    - 一定ターン数（例: 3ターン）ごとに Reflection Panel を表示
+    - 表示内容は以下のみ
+      - 現在の論点一覧
+      - 現在フォーカス中の論点
+      - 現在の問い
+    - AIによる「足りない視点」「追加すべき人物」の提案は禁止
+    - ユーザーが以下を選択可能
+      - 続きを見る
+      - 人物追加
+      - 観点追加
+      - 異議を唱える
+      - 議論を整理する
+  - 検証基準:
+    - Reflection Panel表示中も入力を強制されない
+    - 「続きを見る」で討論が継続できる
+- [ ] **T27** `[Back]`: Turn Counter の導入
+  - 目的:
+    - Semanticな「膠着状態判定」を行わず、決定論的にReflection Turnを発火させる
+  - 実装:
+    - DebateStateへ `turn_count` を追加
+    - `/api/next_turn` 実行時にインクリメント
+    - フロントエンドが一定ターンごとにReflection Turnを表示できるようにする
+  - 検証基準:
+    - turn_countが正常に増加する
+    - Reflection Turnの表示タイミングが安定する
 
 ### Phase 3: Screen 2 (結論)
 - [ ] **T31** `[Back]`: `/api/summarize` 実装（全履歴 → Gemini JSON統合レポート生成）
   - 検証基準: pytest で構造化レポート (Before/After/Bento UI用Map) が返る（`integration_state_sample.json` のスキーマに準拠）
 - [ ] **T32** `[Front]`: 結論画面 UI（枠なしBento UI、staggerアニメーション、介入称賛）
   - 検証基準: モック State (`integrationStateSample`) を Framer Motion で順次構築でき、API 接続後も同様に動く
+- [ ] **T33** `[Front]`: 構造のリアルタイム可視化
+  - 目的:
+    - ユーザーが議論ログを追い続けなくても議論の構造変化を把握できるようにする
+  - 実装:
+    - Screen1左サイドパネルを単なる最新論点一覧ではなく「現在の構造ビュー」として強化
+    - Geminiが返す current_points の増減や変化をアニメーション表示
+    - 新規論点が追加された場合は視覚的に強調
+  - 検証基準:
+    - 議論の進行に応じて論点構造が更新される
+    - 長いログを読まなくても現在地が把握できる
 
 ### Phase 4: E2E 統合
 - [ ] **T41** `[Both]`: Screen 0 → 1 → 2 のエンドツーエンドシナリオテスト
@@ -126,6 +174,7 @@
 セッション終了時にこのセクションへ追記する。
 
 - `2026-06-13`: T24 `[Back]` `/api/next_turn` 実装完了（D11）。`make verify-all` グリーン。
+- `2026-06-13`: T23 `[Front]` 介入アクション（異議・観点・質問）入力モード実装完了。`make verify-all` グリーン。
 
 ## 6. ハンドオフメモ
 次セッションが最初に読むべきメモ:

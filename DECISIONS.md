@@ -156,6 +156,44 @@ pydantic でスキーマ化し、入出力で必ず検証する。Screen 0 (Setu
 
 ---
 
+## D10: アバター生成は Gemini nano banana + OpenCV クロマキーで実装する
+
+**判断**: D09 の3段構成（参照取得 → 画像生成 → 背景透過）を、外部画像生成API/透過APIではなく
+以下で実装する:
+
+1. Gemini テキストモデル (`gemini-2.5-flash`) + Search Grounding で人物の外見プロンプトを生成
+   （best-effort: タイムアウト時は Grounding 無しで再試行）
+2. Gemini 画像生成モデル「nano banana」(`gemini-2.5-flash-image`) で、クロマキー用の
+   単色緑背景を指定してアバター画像を生成
+3. OpenCV (`cv2.inRange` によるクロマキー) で緑背景域をアルファ透過
+
+生成したPNGは `backend/static/avatars/<sha1(name)[:12]>.png` に保存し、FastAPI の
+`StaticFiles` で `/static/avatars/...` として配信する。`avatar_url` はこの静的URL
+（`PUBLIC_BASE_URL` + パス）を返す。
+
+テキスト生成・画像生成は同一の `.env` の `GEMINI_API_KEY` を使う。
+
+各段で例外が発生した場合は、名前から決定的に色を選んだ円形プレースホルダー画像
+（OpenCV で生成）にフォールバックし、UI を壊さない（D09 のフェイルセーフ方針を継承）。
+
+**理由**:
+
+- Nanobanana 等の外部画像生成APIや別の透過APIの契約・キー取得のコストを避け、既存の
+  `GEMINI_API_KEY` のみで完結させられる
+- nano banana に「単色背景で生成して」と指示できるため、クロマキーが安定して機能する
+- OpenCV は既に依存に追加済みで、外部サービス呼び出し無しに透過処理が完了する
+
+**影響範囲**:
+
+- `backend/app/gemini_client.py`（新規）: Gemini テキスト/画像生成の単一ラッパ
+- `backend/app/background_removal.py`（新規）: OpenCV クロマキー処理
+- `backend/app/avatar_pipeline.py`（新規）: 3段オーケストレーション + 保存 + フォールバック
+- `backend/main.py`: `/static` を `StaticFiles` でマウント
+- `backend/requirements.txt`: `opencv-python`, `numpy` を追加
+- `.env`: `PUBLIC_BASE_URL`（既定値 `http://localhost:8000`）を追加（任意・コード側にも既定値あり）
+
+---
+
 ## 追加判断の書き方
 
 新しい判断は `D10`, `D11`, ... と連番で追加し、`判断 / 理由 / 影響範囲` を書く。

@@ -21,6 +21,62 @@ FALLBACK_PRAISE_WITHOUT_USER = (
     "議論を最後まで観察し続けた姿勢が、テーマの問いを構造的に立て直す土台となりました。"
 )
 
+# D15: central_concept のフォールバック派生ルール。
+# テーマは自由入力（疑問文や長文を含む）なので、Bento 中心ノードに収めるために
+# 末尾の疑問符・「のだろうか」「か」等の助動詞句を剥がし、先頭の名詞句を助詞
+# (は/が/...) で切り出す素朴な正規化を適用する。
+_CENTRAL_CONCEPT_MAX_LENGTH = 12
+_FALLBACK_CENTRAL_CONCEPT = "テーマ"
+_THEME_TRAILING_PUNCTUATION = "？?!！。.…・"
+_THEME_QUESTION_SUFFIXES: tuple[str, ...] = (
+    "のだろうか",
+    "だろうか",
+    "でしょうか",
+    "ですか",
+    "ますか",
+    "とは何か",
+    "とはなにか",
+    "とは",
+    "なのか",
+    "か",
+)
+_THEME_TOPIC_PARTICLES: tuple[str, ...] = (
+    "は",
+    "が",
+    "を",
+    "に",
+    "で",
+    "と",
+    "へ",
+    "も",
+    "の",
+)
+
+
+def _derive_central_concept(theme: str) -> str:
+    """`theme` から Bento 中心ノード用の短い名詞句を派生する (D15 フォールバック)。
+
+    1. 末尾の句読点・疑問符を剥がす
+    2. 末尾の疑問助動詞句（のだろうか / か など）を1つ剥がす
+    3. 先頭の名詞句を、最初に現れる助詞 (は/が/...) で切り出す
+    4. 12 文字を超えれば切り詰める
+    5. 結果が空なら `_FALLBACK_CENTRAL_CONCEPT` を返す
+    """
+    work = theme.strip().rstrip(_THEME_TRAILING_PUNCTUATION)
+    for suffix in _THEME_QUESTION_SUFFIXES:
+        if work.endswith(suffix):
+            work = work[: -len(suffix)]
+            break
+
+    cut_at = len(work)
+    for particle in _THEME_TOPIC_PARTICLES:
+        idx = work.find(particle)
+        if 0 < idx < cut_at:
+            cut_at = idx
+
+    head = work[:cut_at][:_CENTRAL_CONCEPT_MAX_LENGTH]
+    return head or _FALLBACK_CENTRAL_CONCEPT
+
 
 def build_integration(state: DebateState) -> IntegrationState:
     """Debate State から Integration State を生成して返す。"""
@@ -50,6 +106,7 @@ def _fallback_integration(state: DebateState) -> IntegrationState:
     )
 
     return IntegrationState(
+        central_concept=_derive_central_concept(state.theme),
         before_question=f"{FALLBACK_BEFORE_PREFIX}{state.theme}",
         after_question=FALLBACK_AFTER_TEMPLATE.format(
             theme=state.theme, topic=state.current_topic

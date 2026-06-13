@@ -18,5 +18,6 @@ export function buildInitialDebateState(setup: SetupResult): DebateState {
       avatar_url: avatarUrl ?? FALLBACK_AVATAR_URL,
     })),
     chat_history: [],
+    turn_count: 0,
   }
 }

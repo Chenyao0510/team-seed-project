@@ -31,17 +31,16 @@ const STATUS_LABEL: Record<DebateStatus, string> = {
   waiting: '待機中',
 }
 
-// Reflection Turn (T26): 何ターンごとに一時停止して Reflection Panel を表示するか。
-// turn_count はバックエンド未導入 (T27) のため、フロント側でローカルに集計する暫定実装。
+// Reflection Turn (T26/T27): 何ターンごとに一時停止して Reflection Panel を表示するか。
+// turn_count は backend が `/api/next_turn` のたびに+1して返す値（ユーザー介入はカウントしない）。
 const REFLECTION_INTERVAL = 3
 
-export function DebateStage({ state, onOpenHistory, onStateChange, onIntervene }: DebateStageProps) {
+export function DebateStage({ state, onOpenHistory, onStateChange, onIntervene, onAddCharacter }: DebateStageProps) {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isAddCharOpen, setIsAddCharOpen] = useState(false)
   const isActive = (name: string) => state.active_character === name
   const [intervention, setIntervention] = useState<InterventionKind | null>(null)
-  const [, setTurnCount] = useState(0)
   const [showReflection, setShowReflection] = useState(false)
 
   const existingNames = state.characters.map((c) => c.name)
@@ -78,16 +77,12 @@ export function DebateStage({ state, onOpenHistory, onStateChange, onIntervene }
     setIntervention(kind)
   }
 
-  // AI 進行ターンが完了した際の共通処理。ターン数を集計し、一定数ごとに
-  // Reflection Panel を表示する（ユーザー介入はカウントしない）。
-  const advanceTurnCount = () => {
-    setTurnCount((prev) => {
-      const next = prev + 1
-      if (next % REFLECTION_INTERVAL === 0) {
-        setShowReflection(true)
-      }
-      return next
-    })
+  // AI 進行ターンが完了した際の共通処理。backend が返す turn_count が
+  // REFLECTION_INTERVAL の倍数になったら Reflection Panel を表示する。
+  const maybeShowReflection = (newState: DebateState) => {
+    if (newState.turn_count % REFLECTION_INTERVAL === 0) {
+      setShowReflection(true)
+    }
   }
 
   const handleNextTurn = async () => {
@@ -96,7 +91,7 @@ export function DebateStage({ state, onOpenHistory, onStateChange, onIntervene }
     try {
       const newState = await nextTurn(state)
       onStateChange(newState)
-      advanceTurnCount()
+      maybeShowReflection(newState)
     } catch (err) {
       console.error(err)
       alert('API呼び出しに失敗しました')
@@ -115,7 +110,7 @@ export function DebateStage({ state, onOpenHistory, onStateChange, onIntervene }
         const newState = await nextTurn(state)
         if (mounted) {
           onStateChange(newState)
-          advanceTurnCount()
+          maybeShowReflection(newState)
         }
       } catch (err) {
         console.error(err)

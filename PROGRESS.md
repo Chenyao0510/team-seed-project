@@ -170,7 +170,8 @@
         構造化要約をバックで生成する後続タスクで対応する。
       - `turnCount` はフロントのローカル state で集計（T27 の backend `turn_count` 未導入の
         ため）。T27 実装時に backend から返る `turn_count` ベースの判定へ差し替えること。
-- [ ] **T27** `[Back]`: Turn Counter の導入
+        → **T27 で対応済み**（下記）。
+- [x] **T27** `[Back]`: Turn Counter の導入
   - 目的:
     - Semanticな「膠着状態判定」を行わず、決定論的にReflection Turnを発火させる
   - 実装:
@@ -180,6 +181,18 @@
   - 検証基準:
     - turn_countが正常に増加する
     - Reflection Turnの表示タイミングが安定する
+  - 実績: 2026-06-13 実装完了（D12）。`backend/app/models.py` の `DebateState` に
+    `turn_count: int = Field(default=0, ge=0)` を追加、`backend/app/debate.py`
+    `advance_turn` が `turn_count=state.turn_count + 1` を返す。`fixtures/debate_state_sample.json`
+    / `frontend/src/types/state.ts` / `frontend/src/lib/buildDebateState.ts` を同期。
+    `backend/tests/test_next_turn.py` の正常系・フォールバック両テストに
+    `turn_count` インクリメントの assertion を追加。
+    合わせて T26 の残作業として `DebateStage.tsx` のローカル `turnCount` 集計
+    (`advanceTurnCount`) を撤去し、`nextTurn` の戻り値 `turn_count` を
+    `REFLECTION_INTERVAL` で判定する `maybeShowReflection` に差し替え。
+    T26 の他の退避2項目（動的facilitator・論点×立場×キャラアイコンの構造化要約）は
+    新規バックエンド拡張が必要な未着手の後続タスクとして残存。
+    `make verify-all` グリーン（pytest / ruff / tsc / vite build / lint 全通過）。
 
 ### Phase 3: Screen 2 (結論)
 - [ ] **T31** `[Back]`: `/api/summarize` 実装（全履歴 → Gemini JSON統合レポート生成）
@@ -210,6 +223,7 @@
 - `2026-06-13`: T24 `[Back]` `/api/next_turn` 実装完了（D11）。`make verify-all` グリーン。
 - `2026-06-13`: T23 `[Front]` 介入アクション（異議・観点・質問）入力モード実装完了。`make verify-all` グリーン。
 - `2026-06-13`: T26 `[Front]` Reflection Turn UI 実装完了。`turn_count` はフロントローカル集計の暫定実装、facilitator は静的コピー。`make verify-all` グリーン。
+- `2026-06-13`: T27 `[Back]` Turn Counter 導入（D12）。`DebateState.turn_count` を追加し `/api/next_turn` で+1。T26 の暫定実装（ローカル `turnCount` 集計）を backend 由来の `turn_count` 判定に差し替え。`make verify-all` グリーン。
 
 ## 6. ハンドオフメモ
 次セッションが最初に読むべきメモ:
@@ -219,4 +233,5 @@
 - フロント・バック並行作業のため、`fixtures/` の State JSON をスキーマ Source of Truth として扱う。スキーマ変更時は `DECISIONS.md` D01 → `docs/ARCHITECTURE.md` → `fixtures/*.json` を同一 PR で揃える。
 - T13 で Debate State に `characters` フィールドを追加した。フロント `buildInitialDebateState()` は現状プレースホルダー URL を入れている。T12 でここを `/api/add_character` の戻り値に置き換える。
 - フロント型は `frontend/src/types/state.ts`、Debate Stage 本体は T21 で `frontend/src/screens/DebateStage.tsx` を差し替える形で実装する（props 契約: `state: DebateState`）。
-- T26 で Reflection Panel を実装した。`turnCount` はフロントのローカル state（`DebateStage.tsx`）で集計しており、T27 で backend が `turn_count` を `DebateState` に追加したら、ローカル集計をやめて backend 由来の値に差し替えること。また facilitator の一言は静的コピーのプレースホルダ。動的化（参加者外AIの要約生成）とブロック単位の「論点×立場×キャラアイコン」構造化要約は、バック側のスキーマ拡張/新エンドポイントが必要な後続タスクとして残っている。
+- T26 で Reflection Panel を実装し、T27 で `DebateState.turn_count`（D12）を導入してフロントのローカル集計を backend 由来の値に差し替え済み。Reflection の発火判定は `DebateStage.tsx` の `maybeShowReflection`（`turn_count % REFLECTION_INTERVAL === 0`）。
+- facilitator の一言は静的コピーのプレースホルダ。動的化（参加者外AIの要約生成）とブロック単位の「論点×立場×キャラアイコン」構造化要約は、バック側のスキーマ拡張/新エンドポイントが必要な後続タスクとして残っている（着手時は新規タスク番号を起票すること）。

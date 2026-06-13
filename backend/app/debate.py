@@ -37,6 +37,7 @@ def advance_turn(state: DebateState) -> DebateState:
         current_points=current_points,
         characters=state.characters,
         chat_history=chat_history,
+        turn_count=state.turn_count + 1,
     )
 
 

@@ -75,8 +75,18 @@
     - `make verify-all` グリーン (pytest 3 passed / vite build OK / dev server HTTP 200)
 
 ### Phase 2: Screen 1 (討論 + 介入)
-- [ ] **T21** `[Front]`: ギャルゲ風横並びステージUI（登場人物カード + 中央テロップエリア）
+- [x] **T21** `[Front]`: ギャルゲ風横並びステージUI（登場人物カード + 中央テロップエリア）
   - 検証基準: モック State (`frontend/src/mocks/debateStateSample`) で発話が表示され、ユーザーアバターが右端に配置される
+  - 実績:
+    - `DebateStage.tsx` を本実装に差し替え。3 ペイン構成 (Header / PointsPanel / Stage area)、ダーク stage 配色
+    - `CharactersRow`: AI を `state.characters` 順に左から並べ、`active_character` のみ scale-110 + emerald 発光リングでハイライト。`status` ラベル (思考中 / 発言中 / 待機中) 表示
+    - **ユーザーアバターを `justify-between` で右端固定**、amber リング・「あなた」表示で AI と視覚的に区別（プレースホルダー URL 使用、T12 で差し替え可能）
+    - `TelopBox`: ギャルゲ風ボックスで `current_speech` をスピーカー名つきで表示、空時は status に応じたフォールバックメッセージ
+    - `PointsPanel`: 左サイドに `current_points` をカード表示（空ハンドリング含む）
+    - Header: 3 カラムで topic（左）/ theme（中央）/ 過去ログボタン（右、`onOpenHistory` を T22 用 callback として export）
+    - `App.tsx` に `?mock=debate` URL ショートカット追加（`debateStateSample` で直接 DebateStage 描画 → 目視検証用、T41 完成時に削除）
+    - 各要素に `data-testid` 付与（後続 vitest 用）
+    - `make verify-all` グリーン、dev server `/` と `/?mock=debate` ともに HTTP 200 を確認
 - [ ] **T22** `[Front]`: LINE風の過去ログUI（小さな丸アイコン付きスライドインパネル）
   - 検証基準: トグルでログ表示/非表示が切り替わり、アイコンが正しく表示される
 - [ ] **T23** `[Front]`: 介入アクション（異議・観点・質問）の入力モード実装

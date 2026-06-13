@@ -1,8 +1,14 @@
 import { useState } from 'react'
+import { addCharacter } from '../api/client'
+
+export interface SetupMember {
+  name: string
+  avatarUrl: string | null
+}
 
 export interface SetupResult {
   theme: string
-  members: string[]
+  members: SetupMember[]
 }
 
 interface SetupScreenProps {
@@ -13,20 +19,40 @@ interface SetupScreenProps {
 export function SetupScreen({ onSubmit }: SetupScreenProps) {
   const [theme, setTheme] = useState('')
   const [memberInput, setMemberInput] = useState('')
-  const [members, setMembers] = useState<string[]>([])
+  const [members, setMembers] = useState<SetupMember[]>([])
+  const [loadingMembers, setLoadingMembers] = useState<Set<string>>(new Set())
 
   const trimmedInput = memberInput.trim()
-  const canAdd = trimmedInput.length > 0 && !members.includes(trimmedInput)
+  const canAdd = trimmedInput.length > 0 && !members.some((m) => m.name === trimmedInput)
   const canSubmit = theme.trim().length > 0 && members.length >= 2
 
   const addMember = () => {
     if (!canAdd) return
-    setMembers((prev) => [...prev, trimmedInput])
+    const name = trimmedInput
+    setMembers((prev) => [...prev, { name, avatarUrl: null }])
     setMemberInput('')
+
+    setLoadingMembers((prev) => new Set(prev).add(name))
+    addCharacter(name)
+      .then(({ avatar_url }) => {
+        setMembers((prev) =>
+          prev.map((m) => (m.name === name ? { ...m, avatarUrl: avatar_url } : m)),
+        )
+      })
+      .catch(() => {
+        // バックエンド未起動・エラー時はプレースホルダー表示のまま続行する
+      })
+      .finally(() => {
+        setLoadingMembers((prev) => {
+          const next = new Set(prev)
+          next.delete(name)
+          return next
+        })
+      })
   }
 
   const removeMember = (name: string) => {
-    setMembers((prev) => prev.filter((n) => n !== name))
+    setMembers((prev) => prev.filter((m) => m.name !== name))
   }
 
   const submit = () => {
@@ -97,13 +123,34 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
           </p>
         ) : (
           <ul data-testid="member-list" className="space-y-2">
-            {members.map((name) => (
+            {members.map(({ name, avatarUrl }) => (
               <li
                 key={name}
                 data-testid="member-list-item"
                 className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-4 py-2 text-gray-900"
               >
-                <span>{name}</span>
+                <span className="flex items-center gap-3">
+                  <span
+                    data-testid="member-avatar"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100"
+                  >
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt={`${name} のアバター`}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : loadingMembers.has(name) ? (
+                      <span
+                        data-testid="member-avatar-loading"
+                        className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-emerald-500"
+                      />
+                    ) : (
+                      <span className="text-xs text-gray-400">?</span>
+                    )}
+                  </span>
+                  {name}
+                </span>
                 <button
                   type="button"
                   onClick={() => removeMember(name)}

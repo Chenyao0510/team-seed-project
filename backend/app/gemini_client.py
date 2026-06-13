@@ -1,4 +1,4 @@
-"""Gemini API への呼び出しを1か所に閉じるラッパモジュール。
+"""Gemini API 1
 
 - describe_appearance: Search Grounding を使って人物の外見プロンプトを生成する（best-effort）
 - generate_avatar_image: nano banana (画像生成モデル) でクロマキー背景のアバター画像を生成する
@@ -22,10 +22,12 @@ from app.config import (
     IMAGE_TIMEOUT_SECONDS,
     NEXT_TURN_TIMEOUT_SECONDS,
     REFLECTION_TIMEOUT_SECONDS,
+    SUMMARIZE_HISTORY_PROMPT_LIMIT,
+    SUMMARIZE_TIMEOUT_SECONDS,
     TEXT_MODEL,
     TEXT_TIMEOUT_SECONDS,
 )
-from app.models import DebateState, NextTurnLLMOutput, ReflectionSummary
+from app.models import DebateState, IntegrationState, NextTurnLLMOutput, ReflectionSummary
 
 _client: genai.Client | None = None
 
@@ -155,6 +157,29 @@ def generate_reflection(state: DebateState) -> ReflectionSummary:
     return ReflectionSummary.model_validate(json.loads(text))
 
 
+def generate_summary(state: DebateState) -> IntegrationState:
+    """Debate State の全履歴から、Screen 2 用の Integration State を構造化生成する。
+
+    D04: responseSchema を指定し JSON を強制する。失敗時は呼び出し元
+    (app/summarize.py) が決定的フォールバックする前提のため、ここでは
+    例外を投げるだけでよい。
+    """
+    prompt = _build_summarize_prompt(state)
+    response = _get_client().models.generate_content(
+        model=TEXT_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=IntegrationState,
+            http_options=types.HttpOptions(timeout=SUMMARIZE_TIMEOUT_SECONDS * 1000),
+        ),
+    )
+    text = (response.text or "").strip()
+    if not text:
+        raise ValueError("Gemini summarize response was empty")
+    return IntegrationState.model_validate(json.loads(text))
+
+
 def _build_reflection_prompt(state: DebateState) -> str:
     roster = "、".join(c.name for c in state.characters)
     history_lines = [
@@ -214,9 +239,58 @@ def _build_next_turn_prompt(state: DebateState) -> str:
         "- 発言ログの末尾の発言者が roster に含まれない場合、それはユーザーからの介入"
         "（異議・観点・質問）です。次の発言者はその介入に正面から反応すること。\n"
         "- current_speech は選んだ人物の口調・立場を反映した、1〜3文の日本語の発言。\n"
-        "- current_points は議論全体を通じた論点リストを、新しい発言を踏まえて更新したもの"
-        "（重要な論点を3〜5個、簡潔な日本語の名詞句で）。\n"
+        "- current_points は議論全体を通じた論点リスト（3〜5個の簡潔な名詞句）。\n"
+        "  認知負荷を下げるため、1ターンでの変更は最小限にすること:\n"
+        "    * 追加は最大1個まで（今回の発言で新しく浮上した論点のみ）\n"
+        "    * 削除/差し替えも最大1個まで（既に役割を終えた論点があれば差し替える）\n"
+        "    * 変更しない論点は前ターンの文字列をそのまま再利用すること"
+        "（表記揺れは差分扱いになるので厳禁）\n"
+        "    * 順序も前ターンの並び順を尊重し、新規論点はリスト末尾に追加すること\n"
         "- current_topic は現在議論されている小テーマを、名詞句を「/」で区切った"
         "10〜20文字程度の短い表現にすること（例:「無形価値の評価方法/成果への繋がり」）。"
         "文章や「〜について」「〜の評価」のような冗長な言い回しは避けること。"
+    )
+
+
+def _build_summarize_prompt(state: DebateState) -> str:
+    roster_names = {c.name for c in state.characters}
+    history_lines = [
+        f"{m.speaker}: {m.text}"
+        for m in state.chat_history[-SUMMARIZE_HISTORY_PROMPT_LIMIT:]
+    ]
+    history_text = "\n".join(history_lines) if history_lines else "(発言ログなし)"
+    user_lines = [
+        f"{m.speaker}: {m.text}"
+        for m in state.chat_history
+        if m.speaker not in roster_names
+    ]
+    user_text = "\n".join(user_lines) if user_lines else "(ユーザー介入なし)"
+    points_text = "、".join(state.current_points) if state.current_points else "(なし)"
+
+    return (
+        "あなたは討論の構造を統合するエディターです。以下の討論ログを読み、"
+        "「問いの進化（Before → After）」と「議論を構成する観点の構造マップ」を"
+        "日本語で JSON にまとめてください。\n\n"
+        f"テーマ: {state.theme}\n"
+        f"最終的に扱われていた論点: {state.current_topic}\n"
+        f"議論全体の論点リスト: {points_text}\n"
+        f"発言ログ:\n{history_text}\n\n"
+        f"このうちユーザーからの介入発言:\n{user_text}\n\n"
+        "ルール:\n"
+        "- before_question: 議論開始時にユーザーが抱いていた素朴な問い"
+        "（テーマを1文で問いの形にしたもの）。\n"
+        "- after_question: 議論とユーザー介入を経て進化した、より構造的・本質的な問い（1文）。\n"
+        "- structure_map: 議論で扱われた観点を 2〜4 個のカテゴリにまとめた配列。\n"
+        "  各カテゴリは category_name（簡潔な名詞句）と elements"
+        "（その観点を構成する要素を2〜4個の名詞句で）を持つ。\n"
+        "  ユーザー介入により新しく加わった、または強調された要素があれば、そのカテゴリの"
+        "  highlighted_element_index にそのインデックス（0始まり）を入れる。\n"
+        "  介入が該当しないカテゴリでは省略可。\n"
+        "- user_catalyst: ユーザー介入が議論にもたらした触媒となった視点を、"
+        "簡潔な名詞句で1つ。\n"
+        "  ユーザー介入が無かった場合は、議論で最も中心的だった視点を入れる。\n"
+        "- connective_value_praise: ユーザーの介入が問いの構造に与えた影響を、"
+        "ユーザーを称賛するトーンで1〜2文の日本語で。\n"
+        "  「あなたの〇〇により、〜が〜へと拡張・統合されました」のような構文を推奨。\n"
+        "  ユーザーの不安や劣等感を煽る表現（「浅い」「足りない」等）は禁止。"
     )

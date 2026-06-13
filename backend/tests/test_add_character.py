@@ -21,11 +21,17 @@ def _fake_chroma_image_bytes() -> bytes:
     return bytes(encoded)
 
 
+def _mock_pipeline_bg_removal(monkeypatch) -> None:
+    """rembg を呼ばずに済むよう、pipeline 内の remove_background をパススルー化する。"""
+    monkeypatch.setattr(avatar_pipeline, "remove_background", lambda data: data)
+
+
 def test_add_character_returns_avatar_url(monkeypatch, tmp_path):
     monkeypatch.setattr(avatar_pipeline, "AVATARS_DIR", tmp_path)
     monkeypatch.setattr(
         avatar_pipeline.image_search, "fetch_reference_images", lambda name, max_images=3: []
     )
+    _mock_pipeline_bg_removal(monkeypatch)
     monkeypatch.setattr(
         gemini_client,
         "generate_avatar_image",
@@ -46,6 +52,7 @@ def test_add_character_returns_avatar_url(monkeypatch, tmp_path):
 def test_add_character_passes_reference_images_to_gemini(monkeypatch, tmp_path):
     """画像検索で取得した参照画像が Gemini にそのまま渡されることを保証する。"""
     monkeypatch.setattr(avatar_pipeline, "AVATARS_DIR", tmp_path)
+    _mock_pipeline_bg_removal(monkeypatch)
 
     fake_refs = [(b"\x89PNG-fake-a", "image/png"), (b"\xff\xd8\xff-fake-b", "image/jpeg")]
     monkeypatch.setattr(
@@ -75,6 +82,7 @@ def test_add_character_falls_back_to_placeholder_on_gemini_failure(monkeypatch, 
     monkeypatch.setattr(
         avatar_pipeline.image_search, "fetch_reference_images", lambda name, max_images=3: []
     )
+    _mock_pipeline_bg_removal(monkeypatch)
 
     def _raise(*args, **kwargs):
         raise RuntimeError("gemini unavailable")

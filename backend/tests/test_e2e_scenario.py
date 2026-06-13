@@ -49,6 +49,8 @@ def test_full_scenario_state_survives_screen0_to_screen2(monkeypatch, tmp_path):
     monkeypatch.setattr(
         avatar_pipeline.image_search, "fetch_reference_images", lambda name, max_images=3: []
     )
+    # rembg (heavy ONNX) を avoid: pipeline 内の remove_background をパススルー化
+    monkeypatch.setattr(avatar_pipeline, "remove_background", lambda data: data)
     monkeypatch.setattr(
         gemini_client,
         "generate_avatar_image",

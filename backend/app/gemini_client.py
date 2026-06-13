@@ -64,8 +64,6 @@ def generate_avatar_image(
     prompt = (
         f"「{name}」の体全体（全身）が描かれた立ち絵イラストを1枚生成してください。\n"
         f"{reference_clause}"
-        f"人物の服や髪に背景と同じ色を使わないこと。\n"
-        f"背景の色は人物に使われていない色で、グラデーションや模様を入れず単色にすること。\n"
         f"頭の先が画像の上端から10%くらい、足先も下端から10%くらいで上下に余裕があるように配置すること。\n"
         f"等身はその人の年齢に応じた比率にすること。"
     )
@@ -196,11 +194,18 @@ def _build_reflection_prompt(state: DebateState) -> str:
 
 def _build_next_turn_prompt(state: DebateState) -> str:
     roster = "、".join(c.name for c in state.characters)
+    # 履歴行に emotion を含める。Gemini に「直近で使われた感情」を見せて
+    # 同じ感情の連発を避けさせる手がかりにする。
     history_lines = [
-        f"{m.speaker}: {m.text}" for m in state.chat_history[-CHAT_HISTORY_PROMPT_LIMIT:]
+        f"{m.speaker}[{m.emotion}]: {m.text}"
+        for m in state.chat_history[-CHAT_HISTORY_PROMPT_LIMIT:]
     ]
     history_text = "\n".join(history_lines) if history_lines else "(まだ発言はありません)"
     points_text = "、".join(state.current_points) if state.current_points else "(まだなし)"
+    recent_emotions = [m.emotion for m in state.chat_history[-3:] if m.emotion]
+    recent_emotions_text = (
+        "、".join(recent_emotions) if recent_emotions else "(まだなし)"
+    )
 
     return (
         "あなたは討論番組の進行役です。以下の討論の状況をもとに、次に発言する人物を1人選び、"
@@ -209,17 +214,30 @@ def _build_next_turn_prompt(state: DebateState) -> str:
         f"現在の論点: {state.current_topic}\n"
         f"登場人物（roster）: {roster}\n"
         f"直前の発言者: {state.active_character}\n"
-        f"これまでの発言ログ:\n{history_text}\n"
-        f"現在の論点リスト: {points_text}\n\n"
+        f"これまでの発言ログ（[]内は当時の感情）:\n{history_text}\n"
+        f"現在の論点リスト: {points_text}\n"
+        f"直近3ターンの感情: {recent_emotions_text}\n\n"
         "ルール:\n"
         f"- active_character は roster ({roster}) の中から、直前の発言者"
         f"（{state.active_character}）とは別の人物を選ぶこと。\n"
         "- 発言ログの末尾の発言者が roster に含まれない場合、それはユーザーからの介入"
         "（異議・観点・質問）です。次の発言者はその介入に正面から反応すること。\n"
         "- current_speech は選んだ人物の口調・立場を反映した、1〜3文の日本語の発言。\n"
-        "- emotion は以下の8種類の中から発言に最も適したものを選ぶこと: "
-        '"neutral", "happy", "angry", "sad", "surprised", '
-        '"thinking", "confident", "confused"。\n'
+        "- emotion は以下の8種類から、発言内容の **感情の重心** に最も合うものを選ぶ:\n"
+        '    * "confident": 自説を堂々と断定する／皮肉や勝ち誇り／反論を一蹴する\n'
+        '    * "thinking": 問いを返す／前提を疑う／「では〜とはどういうことか」と熟考する\n'
+        '    * "angry": 相手の意見を強く批判／本気で反対／義憤を露わにする\n'
+        '    * "surprised": 相手の言葉に意表を突かれる／想定外の視点に気づく\n'
+        '    * "happy": 賛意・同意・「いい指摘だ」と乗っかる／ユーモアを交える\n'
+        '    * "sad": 失望・諦観・悲観的な見通し／「残念だが…」のトーン\n'
+        '    * "confused": 自説に迷い／話の流れを掴みきれず戸惑う\n'
+        '    * "neutral": 上のどれにも当てはまらない、淡々とした事実説明のみ\n'
+        "- 感情選択の重要な追加ルール:\n"
+        "    * 直近3ターンと同じ感情をそのまま繰り返さないこと。\n"
+        "      議論はうねりを持って進むので、同じ感情が連続することは不自然。\n"
+        "    * 「とりあえず confident」「とりあえず thinking」のデフォルト選択を避け、"
+        "発言内容を読み返して合うものを選ぶこと。\n"
+        "    * neutral は本当に感情が動いていないときだけ。迷ったら他の7種から選ぶ。\n"
         "- current_points は議論全体を通じた論点リスト（3〜5個の簡潔な名詞句）。\n"
         "  認知負荷を下げるため、1ターンでの変更は最小限にすること:\n"
         "    * 追加は最大1個まで（今回の発言で新しく浮上した論点のみ）\n"

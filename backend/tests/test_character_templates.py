@@ -24,7 +24,8 @@ def test_character_templates_returns_only_existing_pngs(monkeypatch, tmp_path):
     assert slugs == {"obama"}
     obama = body[0]
     assert obama["name"] == "バラク・オバマ"
-    assert obama["avatar_url"] == f"{PUBLIC_BASE_URL}/static/templates/obama.png"
+    # mtime クエリ文字列でキャッシュバスティングしているのでパス部分だけ検証する
+    assert obama["avatar_url"].startswith(f"{PUBLIC_BASE_URL}/static/templates/obama.png?v=")
 
 
 def test_character_templates_returns_empty_when_no_pngs(monkeypatch, tmp_path):

@@ -1,38 +1,45 @@
-# CLAUDE.md -- Quick Reference
+# CLAUDE.md -- 即時参照
 
-## Project
+## スタック
 
-<!-- TODO: one-line summary once the idea is locked -->
-**What**: TBD  
-**Stack**: TBD (framework, language, and runtime not yet decided)
+- フロント: Vite + React 19 + TypeScript + Tailwind CSS v4 (`frontend/`)
+- バック: FastAPI + Python 3.13 + google-genai (`backend/`)
+- LLM: Gemini API（JSON Mode / Structured Outputs）
 
-## Build & Run
+## コマンド (Makefile 経由)
 
-```bash
-# TBD -- fill in once stack is chosen
-# install      e.g. npm install / pip install / cargo build
-# dev          e.g. npm run dev
-# type-check   e.g. npm run check / mypy / cargo check
-# test         e.g. npm test / pytest / cargo test
-```
+| コマンド             | 用途                                                |
+| -------------------- | -------------------------------------------------- |
+| `make init`          | フロント・バックの依存関係をインストール             |
+| `make lint`          | 静的解析・フォーマットチェック                      |
+| `make check-types`   | フロントの型チェック (`tsc -b --noEmit`)             |
+| `make test`          | フロント・バックのテストを実行                      |
+| `make build`         | フロントのプロダクションビルド検証                  |
+| `make verify-all`    | 上記すべてを順に実行（Handoff Ready 判定）           |
+| `make dev-frontend`  | フロント開発サーバ起動 (`http://localhost:5173`)    |
+| `make dev-backend`   | バック開発サーバ起動 (`http://localhost:8000`)      |
+| `make clean`         | ビルド・キャッシュ削除                              |
 
-## Key Files
+## 主要ファイル
 
-| File                   | Purpose                               |
-| ---------------------- | ------------------------------------- |
-| `AGENTS.md`            | Operating rules for AI agents         |
-| `docs/PROJECT.md`      | What we're building and why           |
-| `docs/ARCHITECTURE.md` | System design and layer boundaries    |
+| パス                    | 役割                                       |
+| ----------------------- | ----------------------------------------- |
+| `AGENTS.md`             | エージェント運用ルール                      |
+| `CONSTRAINTS.md`        | MUST / MUST NOT                           |
+| `PROGRESS.md`           | 機能キュー・進捗                            |
+| `DECISIONS.md`          | 設計判断ログ                                |
+| `docs/PROJECT.md`       | プロダクト仕様                              |
+| `docs/ARCHITECTURE.md`  | システム設計                                |
+| `backend/main.py`       | FastAPI エントリポイント (CORS + health)    |
+| `backend/app/`          | API ロジック (今後追加)                    |
+| `backend/tests/`        | pytest スイート                            |
+| `frontend/src/`         | React アプリ                                |
+| `Makefile`              | 開発・検証コマンド一元化                    |
 
-## How to Add a Feature
+## 絶対制約 (詳細は CONSTRAINTS.md)
 
-<!-- TODO: update when stack and architecture are finalized -->
-1. Check `docs/ARCHITECTURE.md` to understand where the change belongs.
-2. Write the test first (RED).
-3. Implement to pass the test (GREEN).
-4. Update `docs/ARCHITECTURE.md` if new layers or dependencies are added.
-
-## Testing
-
-<!-- TODO: fill in testing commands once stack is chosen -->
-Target: 80% line coverage minimum.
+- タスクは同時に 1 つしか並行処理しない
+- 完了判断は自己申告ではなく、`make verify-all` と動作確認の結果に基づく
+- API レスポンスは構造化 JSON。フロントとバックは単一 State JSON をやり取りする
+- AI 任せの「全自動チャット UI」は作らない（介入できることが体験の核）
+- マルチエージェントフレームワーク（LangGraph 等）禁止

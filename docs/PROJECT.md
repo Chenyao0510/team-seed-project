@@ -1,47 +1,79 @@
-# PROJECT.md -- What We Are Building
+# PROJECT.md -- プロダクト仕様
 
-## Problem
+## 問題
 
-<!-- TODO: one paragraph -- what pain does this solve and for whom? -->
-TBD
+人間が一人で考えるとき、論点の見落とし・思考の浅さ・偏った視点に陥りやすい。一方で AI に全部任せると、自分が思考した実感が残らず、成長感も達成感もない。
 
-## Target Users
+## ターゲット
 
-<!-- TODO: who uses this? primary and secondary personas -->
-TBD
+- 思考整理ツールを試したい開発者・学生
+- ハッカソン会場で「介入できる AI 議論」を体験したい審査員
+- 内省や議論をエンタメ的に楽しみたいユーザー
 
-## Core Features
+## プロダクト概要
 
-<!-- TODO: list the must-haves for the hackathon demo -->
-### Feature 1: TBD
-- TBD
+3 画面構成のアプリ。ユーザーはテーマを与え、AI の登場人物同士に議論をさせる。**議論の途中で随時介入**（反論・質問・観点追加）でき、自分の介入が結論に与えた影響を最後に振り返れる。
 
-### Feature 2: TBD
-- TBD
+## 画面と中核機能
 
-### Feature 3: TBD
-- TBD
+### 画面 1 -- テーマ入力
 
-## UI Sketch
+- テーマをテキストで入力
+- 登場人物（議論する AI ペルソナ）を選択 or プリセットから選ぶ
+- 「議論を開始」ボタンで画面 2 へ遷移
 
-<!-- TODO: ASCII wireframe or description of the main screen(s) -->
+### 画面 2 -- 討論 & 介入
+
+- 横並びの登場人物カード（ステージ演出）
+- 中央に発話の吹き出しがターンごとに表示
+- 過去ログは隠蔽型のスライドインパネルで参照可能
+- 画面下部に介入ボタン群:
+  - **反論する** (`rebut`)
+  - **質問する** (`question`)
+  - **観点を追加** (`add_view`)
+- 介入を入れると次ターンに反映される
+- 「結論を出す」ボタンで画面 3 へ
+
+### 画面 3 -- 結論
+
+- 巨大なジレンマ / 結論テキスト
+- Before（最初のテーマ）/ After（議論後の結論）の対比
+- ユーザー介入の称賛セクション（例: 「あなたの観点追加で議論の方向が変わりました」）
+- シェア導線（X / リンクコピー）
+
+## UI スケッチ
+
+```text
+画面 2:
++--------------------------------------------------------+
+| [☰ 過去ログ]                              [結論を出す]  |
++--------------------------------------------------------+
+| [キャラA]            「.....」              [キャラB]    |
+|  熱血派              発話バブル              冷静派      |
+|                                                        |
+|                  ターン 3 / 10                         |
++--------------------------------------------------------+
+| [反論する]  [質問する]  [観点を追加]                    |
++--------------------------------------------------------+
 ```
-TBD
-```
 
-## Constraints
+## 制約 (詳細は CONSTRAINTS.md)
 
-<!-- Things we know are fixed regardless of stack -->
-- Hackathon time limit: [TBD hours]
-- Must be demoed live -- offline-capable preferred
-- <!-- TODO: add any API or infra constraints -->
+- ハッカソン尺：24 時間以内に MVP を出す
+- ローカル動作 + Gemini API のみ。DB なし
+- 介入できることが体験の核。AI 任せの全自動チャットにはしない
+- ユーザーを煽る・劣等感を与える文言は禁止
 
-## Out of Scope
+## 範囲外（やらない）
 
-<!-- Explicitly list things we are NOT building to prevent scope creep -->
-- TBD
+- 認証 / ユーザー管理
+- 永続的なセッション保存（クラウド側）
+- 音声・動画
+- マルチエージェントフレームワーク導入
 
-## Success Criteria
+## 成功基準（デモ評価）
 
-<!-- What does a winning demo look like? -->
-- TBD
+- 入力 → 討論 → 結論のフローが詰まらず通る
+- 介入が議論内容に明らかに反映される
+- 結論画面で介入の影響が可視化される
+- デモ時に審査員が触って「介入の手応え」を感じる

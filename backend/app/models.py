@@ -111,10 +111,13 @@ class StructureCategory(BaseModel):
 class IntegrationState(BaseModel):
     """Screen 2 (Integration Map) の唯一の信頼できる State。
 
+    `central_concept` は Bento UI 中心ノードに表示する短い名詞句 (D15)。テーマ全文を
+    そのまま中心に置くと十字 Bento のレイアウトが破綻するため、LLM 側で短く生成させる。
     `connective_value_praise` はユーザーの介入が問いの構造に与えた影響を称賛する文言
     （CONSTRAINTS.md: ユーザーの不安や劣等感を煽る文言は禁止）。
     """
 
+    central_concept: str = Field(..., max_length=12)
     before_question: str
     after_question: str
     structure_map: list[StructureCategory]

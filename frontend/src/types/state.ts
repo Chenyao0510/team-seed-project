@@ -57,6 +57,7 @@ export interface IntegrationStructureCategory {
 }
 
 export interface IntegrationState {
+  central_concept: string
   before_question: string
   after_question: string
   structure_map: IntegrationStructureCategory[]

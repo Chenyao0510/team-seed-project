@@ -162,8 +162,30 @@
     - Reflection Turnの表示タイミングが安定する
 
 ### Phase 3: Screen 2 (結論)
-- [ ] **T31** `[Back]`: `/api/summarize` 実装（全履歴 → Gemini JSON統合レポート生成）
+- [x] **T31** `[Back]`: `/api/summarize` 実装（全履歴 → Gemini JSON統合レポート生成）
   - 検証基準: pytest で構造化レポート (Before/After/Bento UI用Map) が返る（`integration_state_sample.json` のスキーマに準拠）
+  - 実績: 2026-06-13 実装完了。詳細は `DECISIONS.md` D12。
+    - `backend/app/models.py` に `StructureCategory` / `IntegrationState` を追加
+      （D01 スキーマ準拠、`highlighted_element_index` は Optional）。
+    - `backend/app/gemini_client.py` に `generate_summary` を追加（D04 JSON Mode、
+      `responseSchema=IntegrationState`、`SUMMARIZE_TIMEOUT_SECONDS=30`）。プロンプトで
+      Before→After 構造・roster 外発言＝ユーザー介入扱い・称賛トーン
+      （CONSTRAINTS「不安・劣等感を煽らない」）を明示。
+    - `backend/app/summarize.py`（新規）に `build_integration` を実装。Gemini 失敗時は
+      決定的フォールバック（`current_points` を1カテゴリの elements にし、`chat_history`
+      末尾の roster 外発言を `user_catalyst` に採用、介入があれば末尾要素に
+      `highlighted_element_index` を振る）。
+    - `backend/app/routes.py` に `POST /api/summarize` を追加。
+    - `backend/app/config.py` に `SUMMARIZE_HISTORY_PROMPT_LIMIT=40` /
+      `SUMMARIZE_TIMEOUT_SECONDS=30` を追加。
+    - `backend/tests/test_summarize.py`（新規）で 4 テスト追加:
+      正常系（stub IntegrationState）/ Gemini 失敗時フォールバック必須フィールド検証 /
+      ユーザー介入を chat_history に追加した時の `user_catalyst` ＆ highlighted_index 反映 /
+      不正 State の 422。
+    - `make verify-all` グリーン（pytest 13 passed / lint / tsc / vite build 全通過）。
+    - ARCHITECTURE.md は既に `/api/summarize` のデータフロー・API 契約を記載済のため
+      更新不要。スキーマ Source of Truth (`fixtures/integration_state_sample.json`) も
+      pydantic と一致しており変更なし。
 - [ ] **T32** `[Front]`: 結論画面 UI（枠なしBento UI、staggerアニメーション、介入称賛）
   - 検証基準: モック State (`integrationStateSample`) を Framer Motion で順次構築でき、API 接続後も同様に動く
 - [ ] **T33** `[Front]`: 構造のリアルタイム可視化
@@ -186,6 +208,7 @@
 ## 5. セッションログ
 セッション終了時にこのセクションへ追記する。
 
+- `2026-06-13`: T31 `[Back]` `/api/summarize` 実装完了（D12）。`make verify-all` グリーン（pytest 13 passed）。
 - `2026-06-13`: T25 `[Both]` 人物追加モーダル UI 実装完了（バックは T12 `/api/add_character` を再利用、API/スキーマ変更なし）。`make verify-all` グリーン。
 - `2026-06-13`: T24 `[Back]` `/api/next_turn` 実装完了（D11）。`make verify-all` グリーン。
 - `2026-06-13`: T23 `[Front]` 介入アクション（異議・観点・質問）入力モード実装完了。`make verify-all` グリーン。

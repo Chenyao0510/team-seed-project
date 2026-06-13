@@ -238,6 +238,48 @@ Debate State を返す（ミューテーションせず常に新規構築）。
 
 ---
 
+## D12: `/api/summarize` のレポート生成セマンティクス
+
+**判断**: T31 `/api/summarize` は、Debate State を受け取り、Gemini
+(`gemini-2.5-flash`) に `responseSchema=IntegrationState` で構造化生成させて
+Integration State をそのまま返す。失敗時はバックエンド側で決定的な
+フォールバック Integration State を構築して返す。
+
+プロンプトでは以下を明示する:
+- `chat_history` のうち `characters` (roster) に含まれない発言者は「ユーザー介入」
+  として扱い、`user_catalyst` と `connective_value_praise` の素材にする
+- `connective_value_praise` はユーザーを称賛するトーンで書き、不安・劣等感を煽る
+  表現を禁止する（CONSTRAINTS.md「ユーザーの不安や劣等感を煽る演出・文言は入れない」）
+- `before_question` はテーマを素朴な問いに、`after_question` は議論を経て進化した
+  問いに（Before → After を明示）
+- `structure_map` は 2〜4 個のカテゴリでまとめ、ユーザー介入により強調された要素は
+  `highlighted_element_index` で示す
+
+フォールバック (`app/summarize.py::_fallback_integration`) は、`current_points`
+を1カテゴリの elements にし、`chat_history` 末尾の roster 外発言を user_catalyst に
+採用、ユーザー介入があれば `highlighted_element_index` を末尾要素に振る。介入が
+無い場合は中立的な称賛文を返す。
+
+**理由**:
+
+- Screen 2 は「答え」ではなく「問いの構造とその進化」を持ち帰らせる画面なので、
+  Before/After 構造を LLM 側で一撃生成させるのが最も簡潔（D02 の方針継承）
+- ユーザー介入の扱いを `chat_history` の roster 外発言で判定する規約は、
+  T23/T24 (`/api/next_turn`) と同じで一貫性が保てる
+- フォールバックを決定的に作っておくことで、ハッカソン中の Gemini 失敗・スキーマ
+  逸脱でも Screen 2 が UI ごと崩れない（D09/D10/D11 のフェイルセーフ方針を継承）
+
+**影響範囲**:
+
+- `backend/app/models.py`: `StructureCategory` / `IntegrationState` を追加
+- `backend/app/gemini_client.py`: `generate_summary` + `_build_summarize_prompt` を追加
+- `backend/app/summarize.py`（新規）: `build_integration` オーケストレーション + フォールバック
+- `backend/app/routes.py`: `POST /api/summarize` を追加
+- `backend/app/config.py`: `SUMMARIZE_HISTORY_PROMPT_LIMIT` / `SUMMARIZE_TIMEOUT_SECONDS` を追加
+- `backend/tests/test_summarize.py`（新規）: 正常系・フォールバック2種・422 の4テスト
+
+---
+
 ## 追加判断の書き方
 
 新しい判断は `D10`, `D11`, ... と連番で追加し、`判断 / 理由 / 影響範囲` を書く。

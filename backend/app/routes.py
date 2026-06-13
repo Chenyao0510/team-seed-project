@@ -4,7 +4,13 @@ from fastapi import APIRouter
 
 from app.avatar_pipeline import generate_character_avatar
 from app.debate import advance_turn
-from app.models import AddCharacterRequest, AddCharacterResponse, DebateState
+from app.models import (
+    AddCharacterRequest,
+    AddCharacterResponse,
+    DebateState,
+    IntegrationState,
+)
+from app.summarize import build_integration
 
 router = APIRouter()
 
@@ -18,3 +24,8 @@ def add_character(request: AddCharacterRequest) -> AddCharacterResponse:
 @router.post("/api/next_turn", response_model=DebateState)
 def next_turn(state: DebateState) -> DebateState:
     return advance_turn(state)
+
+
+@router.post("/api/summarize", response_model=IntegrationState)
+def summarize(state: DebateState) -> IntegrationState:
+    return build_integration(state)

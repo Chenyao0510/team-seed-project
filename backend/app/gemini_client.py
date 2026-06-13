@@ -21,10 +21,12 @@ from app.config import (
     IMAGE_MODEL,
     IMAGE_TIMEOUT_SECONDS,
     NEXT_TURN_TIMEOUT_SECONDS,
+    SUMMARIZE_HISTORY_PROMPT_LIMIT,
+    SUMMARIZE_TIMEOUT_SECONDS,
     TEXT_MODEL,
     TEXT_TIMEOUT_SECONDS,
 )
-from app.models import DebateState, NextTurnLLMOutput
+from app.models import DebateState, IntegrationState, NextTurnLLMOutput
 
 _client: genai.Client | None = None
 
@@ -132,6 +134,29 @@ def generate_next_turn(state: DebateState) -> NextTurnLLMOutput:
     return NextTurnLLMOutput.model_validate(json.loads(text))
 
 
+def generate_summary(state: DebateState) -> IntegrationState:
+    """Debate State の全履歴から、Screen 2 用の Integration State を構造化生成する。
+
+    D04: responseSchema を指定し JSON を強制する。失敗時は呼び出し元
+    (app/summarize.py) が決定的フォールバックする前提のため、ここでは
+    例外を投げるだけでよい。
+    """
+    prompt = _build_summarize_prompt(state)
+    response = _get_client().models.generate_content(
+        model=TEXT_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=IntegrationState,
+            http_options=types.HttpOptions(timeout=SUMMARIZE_TIMEOUT_SECONDS * 1000),
+        ),
+    )
+    text = (response.text or "").strip()
+    if not text:
+        raise ValueError("Gemini summarize response was empty")
+    return IntegrationState.model_validate(json.loads(text))
+
+
 def _build_next_turn_prompt(state: DebateState) -> str:
     roster = "、".join(c.name for c in state.characters)
     history_lines = [
@@ -158,4 +183,48 @@ def _build_next_turn_prompt(state: DebateState) -> str:
         "- current_points は議論全体を通じた論点リストを、新しい発言を踏まえて更新したもの"
         "（重要な論点を3〜5個、簡潔な日本語の名詞句で）。\n"
         "- current_topic は現在議論されている小テーマを簡潔に。"
+    )
+
+
+def _build_summarize_prompt(state: DebateState) -> str:
+    roster_names = {c.name for c in state.characters}
+    history_lines = [
+        f"{m.speaker}: {m.text}"
+        for m in state.chat_history[-SUMMARIZE_HISTORY_PROMPT_LIMIT:]
+    ]
+    history_text = "\n".join(history_lines) if history_lines else "(発言ログなし)"
+    user_lines = [
+        f"{m.speaker}: {m.text}"
+        for m in state.chat_history
+        if m.speaker not in roster_names
+    ]
+    user_text = "\n".join(user_lines) if user_lines else "(ユーザー介入なし)"
+    points_text = "、".join(state.current_points) if state.current_points else "(なし)"
+
+    return (
+        "あなたは討論の構造を統合するエディターです。以下の討論ログを読み、"
+        "「問いの進化（Before → After）」と「議論を構成する観点の構造マップ」を"
+        "日本語で JSON にまとめてください。\n\n"
+        f"テーマ: {state.theme}\n"
+        f"最終的に扱われていた論点: {state.current_topic}\n"
+        f"議論全体の論点リスト: {points_text}\n"
+        f"発言ログ:\n{history_text}\n\n"
+        f"このうちユーザーからの介入発言:\n{user_text}\n\n"
+        "ルール:\n"
+        "- before_question: 議論開始時にユーザーが抱いていた素朴な問い"
+        "（テーマを1文で問いの形にしたもの）。\n"
+        "- after_question: 議論とユーザー介入を経て進化した、より構造的・本質的な問い（1文）。\n"
+        "- structure_map: 議論で扱われた観点を 2〜4 個のカテゴリにまとめた配列。\n"
+        "  各カテゴリは category_name（簡潔な名詞句）と elements"
+        "（その観点を構成する要素を2〜4個の名詞句で）を持つ。\n"
+        "  ユーザー介入により新しく加わった、または強調された要素があれば、そのカテゴリの"
+        "  highlighted_element_index にそのインデックス（0始まり）を入れる。\n"
+        "  介入が該当しないカテゴリでは省略可。\n"
+        "- user_catalyst: ユーザー介入が議論にもたらした触媒となった視点を、"
+        "簡潔な名詞句で1つ。\n"
+        "  ユーザー介入が無かった場合は、議論で最も中心的だった視点を入れる。\n"
+        "- connective_value_praise: ユーザーの介入が問いの構造に与えた影響を、"
+        "ユーザーを称賛するトーンで1〜2文の日本語で。\n"
+        "  「あなたの〇〇により、〜が〜へと拡張・統合されました」のような構文を推奨。\n"
+        "  ユーザーの不安や劣等感を煽る表現（「浅い」「足りない」等）は禁止。"
     )

@@ -25,11 +25,18 @@
   "status": "thinking | speaking | waiting",
   "current_speech": "string",
   "current_points": ["string"],
+  "characters": [
+    {"name": "string", "avatar_url": "string"}
+  ],
   "chat_history": [
     {"speaker": "string", "text": "string", "avatar_url": "string"}
   ]
 }
 ```
+
+`characters` はステージ上に並ぶ参加者 roster。`active_character` はこの roster のいずれかの `name` を指す。`chat_history` は過去発話の追記ログで、Setup 直後は空配列。
+
+**スキーマ進化メモ (T13)**: 初期は `characters` なしだったが、初期状態（誰もまだ発言していない）で参加者の roster を保持する場所がないため追加。`chat_history` から逆引きする方式は「発言前の参加者」を表現できず、ステージ描画にも不便だった。
 
 ### Integration State (Screen 2) スキーマ
 

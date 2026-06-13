@@ -9,6 +9,16 @@
     "偶発的な人脈形成",
     "モラトリアムの確保"
   ],
+  "characters": [
+    {
+      "name": "Jobs",
+      "avatar_url": "https://placeholder.example/jobs.png"
+    },
+    {
+      "name": "Socrates",
+      "avatar_url": "https://placeholder.example/socrates.png"
+    }
+  ],
   "chat_history": [
     {
       "speaker": "Jobs",

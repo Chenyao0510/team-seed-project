@@ -64,8 +64,15 @@
   - Back: `/api/add_character` を実装（Gemini Search → 画像生成 → 透過処理）
   - Front: 各メンバー名で順に叩き、avatar_url を State に集約
   - 検証基準: 初期メンバー名からGemini検索→Nanobanana生成→透過処理が走り、画像URLの配列が返却されること
-- [ ] **T13** `[Front]`: Screen 0 から Screen 1 への遷移と State 引き継ぎ
+- [x] **T13** `[Front]`: Screen 0 から Screen 1 への遷移と State 引き継ぎ
   - 検証基準: 生成された画像URLを含むStateが Screen 1 に渡り、初期描画に利用されること
+  - 実績:
+    - Debate State スキーマに `characters: [{name, avatar_url}]` を追加（DECISIONS D01 / docs/ARCHITECTURE / fixtures / backend test_fixtures を同一 PR で更新）
+    - `frontend/src/types/state.ts` に DebateState / IntegrationState 型を定義、mocks をその型に統一
+    - `frontend/src/lib/buildDebateState.ts` に SetupResult → 初期 Debate State の組み立て関数（avatar_url はプレースホルダー、T12 で実 URL に置換予定）
+    - `frontend/src/screens/DebateStage.tsx` を stub として追加（roster と avatar をグリッド表示、T21 で本格化）
+    - `App.tsx` を `view: 'setup' | 'debate'` の useState で切替に変更、SetupScreen の onSubmit を配線
+    - `make verify-all` グリーン (pytest 3 passed / vite build OK / dev server HTTP 200)
 
 ### Phase 2: Screen 1 (討論 + 介入)
 - [ ] **T21** `[Front]`: ギャルゲ風横並びステージUI（登場人物カード + 中央テロップエリア）
@@ -104,3 +111,5 @@
 - T12（アバター生成パイプライン）はScreen 0とScreen 1(T25)で共通利用するため、再利用可能な関数・APIとして設計すること。
 - 状態管理はLangGraphを使わず、すべてGeminiのStructured Outputに依存する設計方針に注意。
 - フロント・バック並行作業のため、`fixtures/` の State JSON をスキーマ Source of Truth として扱う。スキーマ変更時は `DECISIONS.md` D01 → `docs/ARCHITECTURE.md` → `fixtures/*.json` を同一 PR で揃える。
+- T13 で Debate State に `characters` フィールドを追加した。フロント `buildInitialDebateState()` は現状プレースホルダー URL を入れている。T12 でここを `/api/add_character` の戻り値に置き換える。
+- フロント型は `frontend/src/types/state.ts`、Debate Stage 本体は T21 で `frontend/src/screens/DebateStage.tsx` を差し替える形で実装する（props 契約: `state: DebateState`）。

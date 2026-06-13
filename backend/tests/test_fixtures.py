@@ -10,11 +10,15 @@ def test_debate_state_sample_has_required_fields():
         "status",
         "current_speech",
         "current_points",
+        "characters",
         "chat_history",
     }
     assert required.issubset(state.keys())
     assert isinstance(state["current_points"], list)
+    assert isinstance(state["characters"], list)
     assert isinstance(state["chat_history"], list)
+    assert all("name" in c and "avatar_url" in c for c in state["characters"])
+    assert state["active_character"] in {c["name"] for c in state["characters"]}
 
 
 def test_integration_state_sample_has_required_fields():

@@ -47,6 +47,14 @@ class UserRef(BaseModel):
     avatar_url: str = ""
 
 
+class AgentThoughtOutput(BaseModel):
+    """各エージェント（AI）が個別に次の発言を考える際の構造化出力。"""
+    willingness_to_speak: bool
+    thought: str = Field(description="発言に至るまでの思考プロセス")
+    current_speech: str
+    current_points: list[str]
+    current_topic: str
+
 class DebateState(BaseModel):
     """Screen 1 (Debate Stage) の唯一の信頼できる State。"""
 
@@ -60,14 +68,10 @@ class DebateState(BaseModel):
     chat_history: list[ChatMessage]
     turn_count: int = Field(default=0, ge=0)
     user: UserRef = Field(default_factory=UserRef)
-
+    agent_thoughts: dict[str, AgentThoughtOutput] = Field(default_factory=dict)
 
 class NextTurnLLMOutput(BaseModel):
-    """Gemini に responseSchema として強制する次ターンの構造化出力。
-
-    `status` は LLM に委ねず Python 側で決定するため含めない。
-    """
-
+    """(廃止予定: generate_next_turn で使用していたモデル)"""
     active_character: str
     current_speech: str
     current_points: list[str]

@@ -38,6 +38,20 @@ export async function nextTurn(state: DebateState): Promise<DebateState> {
   return (await response.json()) as DebateState
 }
 
+export async function think(state: DebateState): Promise<DebateState> {
+  const response = await fetch(`${API_BASE_URL}/api/think`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state),
+  })
+
+  if (!response.ok) {
+    throw new Error(`think failed with status ${response.status}`)
+  }
+
+  return (await response.json()) as DebateState
+}
+
 export async function reflection(state: DebateState): Promise<ReflectionSummary> {
   const response = await fetch(`${API_BASE_URL}/api/reflection`, {
     method: 'POST',

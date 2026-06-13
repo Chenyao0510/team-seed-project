@@ -26,6 +26,10 @@ function App() {
     setView({ kind: 'debate', state: buildInitialDebateState(result) })
   }
 
+  const handleDebateStateChange = (newState: DebateState) => {
+    setView({ kind: 'debate', state: newState })
+  }
+
   if (view.kind === 'debate') {
     return (
       <DebateStage

@@ -4,6 +4,7 @@
   "active_character": "Socrates",
   "status": "thinking",
   "current_speech": "知識そのものよりも、無知の知を自覚する場として大学はまだ価値を保ち得る。しかしそれは制度としてではなく、出会いの場としてだ。",
+  "emotion": "thinking",
   "current_points": [
     "スキルの陳腐化速度",
     "偶発的な人脈形成",
@@ -23,12 +24,14 @@
     {
       "speaker": "Jobs",
       "text": "大学なんて時間の無駄だ。私はリードを中退して、それでも世界を変えた。",
-      "avatar_url": "https://placeholder.example/jobs.png"
+      "avatar_url": "https://placeholder.example/jobs.png",
+      "emotion": "confident"
     },
     {
       "speaker": "Socrates",
       "text": "では問う。汝が中退したから世界を変えられたのか、それとも変えるべき何かを既に持っていたから中退できたのか。",
-      "avatar_url": "https://placeholder.example/socrates.png"
+      "avatar_url": "https://placeholder.example/socrates.png",
+      "emotion": "neutral"
     }
   ],
   "turn_count": 2,

@@ -28,15 +28,19 @@ from pathlib import Path
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_BACKEND_DIR))
 
-from app import gemini_client  # noqa: E402
+from app import gemini_client, image_search  # noqa: E402
 from app.background_removal import remove_background  # noqa: E402
 from app.character_templates import all_template_specs  # noqa: E402
 from app.config import TEMPLATES_DIR  # noqa: E402
 
 
 def _generate_one(slug: str, name: str) -> bytes:
-    description = gemini_client.describe_appearance(name)
-    image_bytes = gemini_client.generate_avatar_image(description)
+    # T52: 名前 + 参照画像数枚で生成する。画像検索が空なら名前のみで Gemini に投げる。
+    try:
+        reference_images = image_search.fetch_reference_images(name)
+    except Exception:
+        reference_images = []
+    image_bytes = gemini_client.generate_avatar_image(name, reference_images)
     return remove_background(image_bytes)
 
 

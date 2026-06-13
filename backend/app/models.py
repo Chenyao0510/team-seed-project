@@ -30,6 +30,7 @@ class ChatMessage(BaseModel):
     speaker: str
     text: str
     avatar_url: str
+    emotion: str = "neutral"
 
 
 # ユーザー介入発言の既定話者名（roster 外）。フロント (DebateStage) と一致させる。
@@ -55,6 +56,7 @@ class DebateState(BaseModel):
     active_character: str
     status: DebateStatus
     current_speech: str
+    emotion: str = "neutral"
     current_points: list[str]
     characters: list[CharacterRef] = Field(min_length=1)
     chat_history: list[ChatMessage]
@@ -70,6 +72,7 @@ class NextTurnLLMOutput(BaseModel):
 
     active_character: str
     current_speech: str
+    emotion: str = "neutral"
     current_points: list[str]
     current_topic: str
 

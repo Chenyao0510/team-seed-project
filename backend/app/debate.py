@@ -22,11 +22,13 @@ def advance_turn(state: DebateState) -> DebateState:
         current_speech = llm_output.current_speech
         current_points = llm_output.current_points
         current_topic = llm_output.current_topic
+        emotion = llm_output.emotion or "neutral"
     except Exception:
         next_character = _next_in_rotation(state)
         current_speech = f"{next_character}が話を引き継ぎます。"
         current_points = state.current_points
         current_topic = state.current_topic
+        emotion = "neutral"
 
     return DebateState(
         theme=state.theme,
@@ -34,6 +36,7 @@ def advance_turn(state: DebateState) -> DebateState:
         active_character=next_character,
         status="speaking",
         current_speech=current_speech,
+        emotion=emotion,
         current_points=current_points,
         characters=state.characters,
         chat_history=chat_history,
@@ -64,6 +67,7 @@ def _archive_current_speech(state: DebateState) -> list[ChatMessage]:
         speaker=state.active_character,
         text=state.current_speech,
         avatar_url=_avatar_for(state, state.active_character),
+        emotion=state.emotion,
     )
     return [*state.chat_history, new_message]
 

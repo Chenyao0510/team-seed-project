@@ -1,7 +1,9 @@
-"""Gemini API 1
+"""Gemini API
 
-- describe_appearance: Search Grounding を使って人物の外見プロンプトを生成する（best-effort）
 - generate_avatar_image: nano banana (画像生成モデル) でクロマキー背景のアバター画像を生成する
+  (T52: 人物名 + 参照画像数枚をマルチモーダル入力として渡し、文字での外見説明は使わない)
+- generate_next_turn / generate_reflection / generate_summary: 議論の State 遷移
+  (responseSchema による JSON 強制出力)
 
 CONSTRAINTS.md: API キーはここで一度だけ読み込み、コードへのハードコードはしない。
 呼び出し元 (avatar_pipeline) は try/except でフォールバックする前提のため、
@@ -15,9 +17,7 @@ from google.genai import types
 
 from app.config import (
     CHAT_HISTORY_PROMPT_LIMIT,
-    CHROMA_KEY_BGR,
     GEMINI_API_KEY,
-    GROUNDING_TIMEOUT_SECONDS,
     IMAGE_MODEL,
     IMAGE_TIMEOUT_SECONDS,
     NEXT_TURN_TIMEOUT_SECONDS,
@@ -25,7 +25,6 @@ from app.config import (
     SUMMARIZE_HISTORY_PROMPT_LIMIT,
     SUMMARIZE_TIMEOUT_SECONDS,
     TEXT_MODEL,
-    TEXT_TIMEOUT_SECONDS,
 )
 from app.models import DebateState, IntegrationState, NextTurnLLMOutput, ReflectionSummary
 
@@ -39,66 +38,45 @@ def _get_client() -> genai.Client:
     return _client
 
 
-def _chroma_color_name() -> str:
-    b, g, r = CHROMA_KEY_BGR
-    if r == 0 and g == 255 and b == 0:
-        return "鮮やかな緑色（クロマキー用グリーンバック）"
-    return f"単色背景 (RGB {r},{g},{b})"
+def generate_avatar_image(
+    name: str,
+    reference_images: list[tuple[bytes, str]] | None = None,
+) -> bytes:
+    """人物名 + 参照画像から、クロマキー背景のアバター画像 (PNG/JPEG bytes) を生成する。
 
-
-def describe_appearance(name: str) -> str:
-    """人物名から、アバター画像生成用の外見プロンプトを生成する。
-
-    Search Grounding を使い実在人物のビジュアル特徴を反映する（best-effort）。
-    Grounding 付きの呼び出しが失敗・タイムアウトした場合は、Grounding 無しで再試行する。
+    T52: 文字での外見説明は省略し、画像検索で取得した本人写真を複数枚渡して
+    Gemini (nano banana) に「これらは同一人物の写真だから、これに似せて全身立ち絵を
+    描いて」と指示する方が、文字描写を介するより別人化リスクが低い。
+    参照画像が無いときは名前だけで生成する（モデルが知っている人物なら描ける）。
     """
-    prompt = (
-        f"「{name}」という人物について、似顔絵アバターを描くための外見の特徴を、"
-        "服装・髪型・年代・雰囲気を中心に日本語で3〜4文で説明してください。"
-        "本人の実際の見た目を調べた上で記述してください。"
-    )
-    try:
-        return _generate_text(
-            prompt,
-            timeout_seconds=GROUNDING_TIMEOUT_SECONDS,
-            use_search_grounding=True,
+    references = reference_images or []
+    has_references = len(references) > 0
+
+    if has_references:
+        reference_clause = (
+            f"添付した {len(references)} 枚の参照写真はすべて「{name}」という同一人物の写真です。"
+            "これらを最優先の手がかりとし、顔立ち（目・鼻・口の配置、輪郭）、髪型、"
+            "肌の色、年代感、雰囲気をそっくり再現した、本人と判別できる似顔絵にしてください。"
         )
-    except Exception:
-        return _generate_text(
-            prompt,
-            timeout_seconds=TEXT_TIMEOUT_SECONDS,
-            use_search_grounding=False,
-        )
+    else:
+        reference_clause = ""
 
-
-def _generate_text(prompt: str, timeout_seconds: int, use_search_grounding: bool) -> str:
-    config_kwargs: dict = {"http_options": types.HttpOptions(timeout=timeout_seconds * 1000)}
-    if use_search_grounding:
-        config_kwargs["tools"] = [types.Tool(google_search=types.GoogleSearch())]
-
-    response = _get_client().models.generate_content(
-        model=TEXT_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(**config_kwargs),
-    )
-    text = (response.text or "").strip()
-    if not text:
-        raise ValueError("Gemini text response was empty")
-    return text
-
-
-def generate_avatar_image(appearance_description: str) -> bytes:
-    """外見の説明文から、クロマキー背景のアバター画像 (PNG/JPEG bytes) を生成する。"""
     prompt = (
-        "次の特徴を持つ人物の、上半身バストアップのアバターイラストを1枚生成してください。\n"
-        f"特徴: {appearance_description}\n"
-        f"背景は必ず{_chroma_color_name()}の単色で、グラデーションや模様を入れないこと。"
-        "人物の服や髪に背景と同じ緑色を使わないこと。"
+        f"「{name}」の体全体（全身）が描かれた立ち絵イラストを1枚生成してください。\n"
+        f"{reference_clause}"
+        f"人物の服や髪に背景と同じ色を使わないこと。\n"
+        f"背景の色は人物に使われていない色で、グラデーションや模様を入れず単色にすること。\n"
+        f"頭の先が画像の上端から10%くらい、足先も下端から10%くらいで上下に余裕があるように配置すること。\n"
+        f"等身はその人の年齢に応じた比率にすること。"
     )
+
+    contents: list = [prompt]
+    for image_bytes, mime_type in references:
+        contents.append(types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
 
     response = _get_client().models.generate_content(
         model=IMAGE_MODEL,
-        contents=prompt,
+        contents=contents,
         config=types.GenerateContentConfig(
             response_modalities=["IMAGE"],
             http_options=types.HttpOptions(timeout=IMAGE_TIMEOUT_SECONDS * 1000),
@@ -226,7 +204,7 @@ def _build_next_turn_prompt(state: DebateState) -> str:
 
     return (
         "あなたは討論番組の進行役です。以下の討論の状況をもとに、次に発言する人物を1人選び、"
-        "その人物として日本語で発言してください。\n\n"
+        "その人物として日本語で発言し、感情の種類も指定してください。\n\n"
         f"テーマ: {state.theme}\n"
         f"現在の論点: {state.current_topic}\n"
         f"登場人物（roster）: {roster}\n"
@@ -239,6 +217,9 @@ def _build_next_turn_prompt(state: DebateState) -> str:
         "- 発言ログの末尾の発言者が roster に含まれない場合、それはユーザーからの介入"
         "（異議・観点・質問）です。次の発言者はその介入に正面から反応すること。\n"
         "- current_speech は選んだ人物の口調・立場を反映した、1〜3文の日本語の発言。\n"
+        "- emotion は以下の8種類の中から発言に最も適したものを選ぶこと: "
+        '"neutral", "happy", "angry", "sad", "surprised", '
+        '"thinking", "confident", "confused"。\n'
         "- current_points は議論全体を通じた論点リスト（3〜5個の簡潔な名詞句）。\n"
         "  認知負荷を下げるため、1ターンでの変更は最小限にすること:\n"
         "    * 追加は最大1個まで（今回の発言で新しく浮上した論点のみ）\n"

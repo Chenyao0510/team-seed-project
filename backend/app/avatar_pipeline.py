@@ -11,7 +11,7 @@ import hashlib
 import cv2
 import numpy as np
 
-from app import gemini_client
+from app import gemini_client, image_search
 from app.background_removal import remove_background
 from app.config import AVATARS_DIR, AVATARS_URL_PREFIX, PLACEHOLDER_SIZE_PX, PUBLIC_BASE_URL
 
@@ -19,17 +19,30 @@ _PLACEHOLDER_RADIUS_MARGIN_PX = 4
 
 
 def generate_character_avatar(name: str) -> str:
-    """人物名からアバター画像を生成し、配信用 URL を返す。"""
+    """人物名からアバター画像を生成し、配信用 URL を返す。
+
+    T52: 一般画像検索(DuckDuckGo Images) で本人写真を数枚 best-effort で取得し、それを
+    Gemini にマルチモーダル入力として渡すことで「本人らしさ」を担保する。
+    画像検索が空でも Gemini は名前だけで生成を試みる（モデルが知っている人物
+    なら描ける）。
+    """
     filename = _avatar_filename(name)
     try:
-        description = gemini_client.describe_appearance(name)
-        image_bytes = gemini_client.generate_avatar_image(description)
+        reference_images = _safe_fetch_reference_images(name)
+        image_bytes = gemini_client.generate_avatar_image(name, reference_images)
         png_bytes = remove_background(image_bytes)
     except Exception:
         png_bytes = _placeholder_png(name)
 
     _save_png(filename, png_bytes)
     return _avatar_url(filename)
+
+
+def _safe_fetch_reference_images(name: str) -> list[tuple[bytes, str]]:
+    try:
+        return image_search.fetch_reference_images(name)
+    except Exception:
+        return []
 
 
 def _avatar_filename(name: str) -> str:

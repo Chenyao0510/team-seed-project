@@ -169,53 +169,64 @@ export function DebateStage({
         onOpenHistory={handleOpenHistory}
       />
 
-      <main className="flex flex-1 flex-col gap-6 px-6 py-6">
-        <div className="flex flex-1 gap-6">
-          <PointsPanel points={state.current_points} />
+      <main className="relative flex flex-1 flex-col gap-6 px-6 py-6 overflow-hidden">
+        <div className="flex flex-1 gap-6 relative z-10">
+          <div className="shrink-0 pointer-events-auto">
+            <PointsPanel points={state.current_points} />
+          </div>
 
-          <section className="flex flex-1 flex-col">
-            <CharactersRow
-              characters={state.characters}
-              isActive={isActive}
-              status={state.status}
-              userName={state.user.name}
-              userAvatarUrl={state.user.avatar_url || USER_AVATAR_FALLBACK}
-            />
-            <div className="relative">
-              <TelopBox
-                speaker={state.active_character}
-                speech={state.current_speech}
-                status={isGenerating ? 'thinking' : state.status}
-                intervention={intervention}
-                onCancel={() => setIntervention(null)}
-                onSubmit={(text) => submitIntervention(intervention!, text)}
+          <section className="flex flex-1 flex-col relative">
+            {/* 立ち絵レイヤー（ギャルゲー風配置） */}
+            <div className="absolute inset-x-0 bottom-20 top-0 flex justify-center items-end pointer-events-none z-0">
+              <CharactersRow
+                characters={state.characters}
+                isActive={isActive}
+                status={state.status}
                 userName={state.user.name}
+                userAvatarUrl={state.user.avatar_url || USER_AVATAR_FALLBACK}
+                emotion={state.emotion}
               />
-              {/* 進行ボタンをテロップ横か下に配置 */}
-              <div className="mx-auto mt-4 flex max-w-3xl justify-end">
-                <button
-                  type="button"
-                  onClick={handleNextTurn}
-                  disabled={isGenerating}
-                  className="rounded bg-emerald-600 px-6 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isGenerating ? '思考中...' : '次へ ❯'}
-                </button>
+            </div>
+
+            <div className="relative flex flex-col justify-end flex-1 z-10 pointer-events-none">
+              <div className="pointer-events-auto w-full relative">
+                <TelopBox
+                  speaker={state.active_character}
+                  speech={state.current_speech}
+                  status={isGenerating ? 'thinking' : state.status}
+                  intervention={intervention}
+                  onCancel={() => setIntervention(null)}
+                  onSubmit={(text) => submitIntervention(intervention!, text)}
+                  userName={state.user.name}
+                />
+                {/* 進行ボタンをテロップ横か下に配置 */}
+                <div className="mx-auto mt-4 flex max-w-3xl justify-end">
+                  <button
+                    type="button"
+                    onClick={handleNextTurn}
+                    disabled={isGenerating}
+                    className="rounded bg-emerald-600 px-6 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isGenerating ? '思考中...' : '次へ ❯'}
+                  </button>
+                </div>
               </div>
             </div>
           </section>
         </div>
 
-        <ActionBar
-          intervention={intervention}
-          onSelectIntervention={setIntervention}
-          interventionEnabled={onIntervene !== undefined}
-          addCharacterEnabled={onAddCharacter !== undefined}
-          onOpenAddCharacter={() => setIsAddCharOpen(true)}
-          summarizeEnabled={onSummarize !== undefined}
-          isSummarizing={isSummarizing}
-          onSummarize={() => onSummarize?.()}
-        />
+        <div className="relative z-20 pointer-events-auto">
+          <ActionBar
+            intervention={intervention}
+            onSelectIntervention={setIntervention}
+            interventionEnabled={onIntervene !== undefined}
+            addCharacterEnabled={onAddCharacter !== undefined}
+            onOpenAddCharacter={() => setIsAddCharOpen(true)}
+            summarizeEnabled={onSummarize !== undefined}
+            isSummarizing={isSummarizing}
+            onSummarize={() => onSummarize?.()}
+          />
+        </div>
       </main>
 
       {isAddCharOpen && (
@@ -705,59 +716,173 @@ interface CharactersRowProps {
   status: DebateStatus
   userName: string
   userAvatarUrl: string
+  emotion: string
 }
 
-function CharactersRow({ characters, isActive, status, userName, userAvatarUrl }: CharactersRowProps) {
+function EmotionEffect({ emotion }: { emotion: string }) {
+  if (emotion === 'happy') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10, scale: 0.5 }}
+        animate={{ opacity: [0, 1, 0], y: -30, scale: 1.2 }}
+        transition={{ repeat: Infinity, duration: 2, ease: "easeOut" }}
+        className="absolute top-2 left-1/2 -translate-x-1/2 text-5xl z-40 pointer-events-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]"
+      >
+        ✨
+      </motion.div>
+    )
+  }
+  if (emotion === 'angry') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: [0, 1, 0], scale: 1.2 }}
+        transition={{ repeat: Infinity, duration: 1.5, ease: "easeOut" }}
+        className="absolute top-2 left-1/2 -translate-x-1/2 text-5xl z-40 pointer-events-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]"
+      >
+        💢
+      </motion.div>
+    )
+  }
+  if (emotion === 'sad') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: [0, 1, 0], y: 20 }}
+        transition={{ repeat: Infinity, duration: 2, ease: "easeIn" }}
+        className="absolute top-6 left-1/2 -translate-x-1/2 text-5xl z-40 pointer-events-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]"
+      >
+        💧
+      </motion.div>
+    )
+  }
+  if (emotion === 'surprised') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10, scale: 0.5 }}
+        animate={{ opacity: [0, 1, 0], y: -20, scale: 1.5 }}
+        transition={{ repeat: Infinity, duration: 1, ease: "easeOut" }}
+        className="absolute top-2 left-1/2 -translate-x-1/2 text-5xl text-yellow-400 font-bold z-40 pointer-events-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]"
+      >
+        ❗️
+      </motion.div>
+    )
+  }
+  if (emotion === 'thinking') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: [0, 1, 0], y: -20 }}
+        transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+        className="absolute top-2 left-1/2 -translate-x-1/2 text-5xl text-slate-200 font-bold z-40 pointer-events-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]"
+      >
+        ❓
+      </motion.div>
+    )
+  }
+  if (emotion === 'confident') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8, rotate: -15 }}
+        animate={{ opacity: [0, 1, 0], scale: 1.5, rotate: 15 }}
+        transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+        className="absolute top-2 left-1/2 -translate-x-1/2 text-5xl z-40 pointer-events-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]"
+      >
+        🌟
+      </motion.div>
+    )
+  }
+  if (emotion === 'confused') {
+    return (
+      <motion.div
+        initial={{ opacity: 0, rotate: 0 }}
+        animate={{ opacity: [0, 1, 0], rotate: 360 }}
+        transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+        className="absolute top-2 left-1/2 -translate-x-1/2 text-5xl z-40 pointer-events-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]"
+      >
+        🌀
+      </motion.div>
+    )
+  }
+  return null
+}
+
+// 立ち絵サイズの命名定数（CONSTRAINTS.md: マジックナンバー禁止）。
+// 縦幅統一方針: 立ち絵は全員ステージの h-full ぴったりの「同じ縦サイズ」で配置する。
+// 画像は h-full w-auto + 絶対配置で、画像のアスペクト比に応じた自然な横幅で描画される。
+// 列幅は flex-1 で均等分配（=横並びの基準点）するが、画像は列の幅に縛られず
+// はみ出して隣のキャラと重なってよい（ユーザー要望: 横で重なるのは構わない）。
+// shrink-0 のユーザー列が常に右端を確保するので、user 丸は画面外に出ない。
+const STANDEE_MAX_COL_WIDTH = 360
+const USER_AVATAR_SIZE = 'h-40 w-40'
+
+function CharactersRow({ characters, isActive, status, userName, userAvatarUrl, emotion }: CharactersRowProps) {
   return (
     <div
       data-testid="stage-row"
-      className="flex flex-1 items-end justify-between gap-6 px-2"
+      className="flex items-end justify-center gap-2 px-2 w-full h-full"
     >
-      <ul className="flex items-end gap-8">
-        {characters.map((c) => (
-          <li
-            key={c.name}
-            data-testid="stage-character"
-            data-active={isActive(c.name) ? 'true' : 'false'}
-            className={[
-              'flex flex-col items-center transition-all duration-300 ease-out',
-              isActive(c.name) ? 'scale-110' : 'scale-95 opacity-60',
-            ].join(' ')}
-          >
-            <div
-              className={[
-                'h-28 w-28 overflow-hidden rounded-full bg-slate-700',
-                isActive(c.name)
-                  ? 'shadow-[0_0_30px_rgba(52,211,153,0.6)] ring-4 ring-emerald-400'
-                  : 'ring-2 ring-slate-600',
-              ].join(' ')}
+      {/* min-w-0 を付けて flex-1 が確実に「親 - user 幅」内に収まるようにする */}
+      <ul className="flex items-end justify-center gap-0 flex-1 min-w-0 h-full">
+        {characters.map((c, i) => {
+          const active = isActive(c.name)
+          // 各列は flex-1 min-w-0 で「立ち位置」のスロットを均等に分配する。
+          // 立ち絵自体は absolute + h-full w-auto で自然な縦長アスペクト比のまま
+          // 縦幅を統一して描画される（列幅より広ければ隣にはみ出す）。
+          return (
+            <motion.li
+              key={c.name}
+              data-testid="stage-character"
+              data-active={active ? 'true' : 'false'}
+              initial={false}
+              animate={active ? { y: [0, -22, 0] } : { y: 0 }}
+              transition={active ? { repeat: Infinity, duration: 2.5, ease: "easeInOut" } : {}}
+              className="relative flex flex-col items-center justify-end flex-1 min-w-0 h-full transition-all duration-300 ease-out"
+              style={{
+                zIndex: active ? 30 : 10 + i,
+                filter: active ? 'none' : 'brightness(0.55) grayscale(0.25)',
+                transform: active ? 'scale(1.06)' : 'scale(0.94)',
+                maxWidth: `${STANDEE_MAX_COL_WIDTH}px`,
+              }}
             >
-              <img
-                src={c.avatar_url}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            </div>
-            <p className="mt-3 text-sm font-semibold">{c.name}</p>
-            {isActive(c.name) && (
-              <span className="mt-1 text-xs text-emerald-300">
-                {STATUS_LABEL[status]}
-              </span>
-            )}
-          </li>
-        ))}
+              {active && <EmotionEffect emotion={emotion} />}
+              {/* 立ち絵描画ボックス: 列の中で 100% 高、絶対配置の img が中央下から立ち上がる */}
+              <div className="relative w-full h-full overflow-visible drop-shadow-2xl">
+                <img
+                  src={c.avatar_url}
+                  alt={c.name}
+                  className="absolute bottom-0 left-1/2 -translate-x-1/2 h-full w-auto max-w-none object-contain object-bottom select-none pointer-events-none"
+                />
+                {/* 足元に影や光を追加 */}
+                {active && (
+                  <div className="absolute -bottom-4 left-1/2 w-3/4 -translate-x-1/2 h-10 bg-emerald-400/35 blur-2xl rounded-[100%]" />
+                )}
+              </div>
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/85 px-4 py-1 rounded-full border border-slate-700 whitespace-nowrap">
+                <p className="text-sm font-semibold text-slate-100">{c.name}</p>
+                {active && (
+                  <span className="block text-center mt-0.5 text-[10px] text-emerald-300 uppercase tracking-wider">
+                    {STATUS_LABEL[status]}
+                  </span>
+                )}
+              </div>
+            </motion.li>
+          )
+        })}
       </ul>
 
-      {/* User avatar is fixed at the far right (PROJECT.md spec). T58: Screen 0 で登録した user.avatar_url を表示。 */}
-      <div data-testid="stage-user" className="flex flex-col items-center">
-        <div className="h-28 w-28 overflow-hidden rounded-full bg-slate-700 ring-2 ring-amber-300">
+      {/* User avatar is fixed at the far right. shrink-0 で潰れず、ml-* で並びから少し離す */}
+      <div data-testid="stage-user" className="flex flex-col items-center relative z-20 shrink-0 ml-2 mb-4">
+        <div className={`${USER_AVATAR_SIZE} overflow-hidden rounded-full bg-slate-700 ring-4 ring-amber-300 shadow-[0_0_24px_rgba(251,191,36,0.45)]`}>
           <img
             src={userAvatarUrl}
             alt=""
             className="h-full w-full object-cover"
           />
         </div>
-        <p className="mt-3 text-sm font-semibold text-amber-200">{userName}</p>
+        <div className="mt-3 bg-slate-900/80 px-4 py-1 rounded-full border border-amber-500/50">
+          <p className="text-sm font-semibold text-amber-200">{userName}</p>
+        </div>
       </div>
     </div>
   )

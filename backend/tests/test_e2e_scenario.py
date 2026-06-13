@@ -15,7 +15,6 @@ import numpy as np
 from fastapi.testclient import TestClient
 
 from app import avatar_pipeline, gemini_client
-from app.config import CHROMA_KEY_BGR
 from app.models import (
     DebateState,
     IntegrationState,
@@ -30,11 +29,12 @@ from main import app
 client = TestClient(app)
 
 _SIZE = 32
+_TEST_BG_BGR = (0, 255, 0)  # 単色背景。本番は左右端から自動推定するため任意の色でよい。
 
 
 def _fake_chroma_image_bytes() -> bytes:
     image = np.zeros((_SIZE, _SIZE, 3), dtype=np.uint8)
-    image[:, :] = CHROMA_KEY_BGR
+    image[:, :] = _TEST_BG_BGR
     image[8:24, 8:24] = (0, 0, 255)
     success, encoded = cv2.imencode(".png", image)
     assert success
@@ -46,9 +46,13 @@ def test_full_scenario_state_survives_screen0_to_screen2(monkeypatch, tmp_path):
 
     # --- Screen 0: アバター生成パイプライン (T12) ---
     monkeypatch.setattr(avatar_pipeline, "AVATARS_DIR", tmp_path)
-    monkeypatch.setattr(gemini_client, "describe_appearance", lambda name: f"{name}の外見")
     monkeypatch.setattr(
-        gemini_client, "generate_avatar_image", lambda description: _fake_chroma_image_bytes()
+        avatar_pipeline.image_search, "fetch_reference_images", lambda name, max_images=3: []
+    )
+    monkeypatch.setattr(
+        gemini_client,
+        "generate_avatar_image",
+        lambda name, reference_images=None: _fake_chroma_image_bytes(),
     )
 
     characters = []

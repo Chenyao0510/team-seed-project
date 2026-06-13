@@ -10,6 +10,7 @@ export interface ChatHistoryEntry {
   speaker: string
   text: string
   avatar_url: string
+  emotion: string
 }
 
 export type DebateStatus = 'thinking' | 'speaking' | 'waiting'
@@ -27,6 +28,7 @@ export interface DebateState {
   active_character: string
   status: DebateStatus
   current_speech: string
+  emotion: string
   current_points: string[]
   characters: Character[]
   chat_history: ChatHistoryEntry[]

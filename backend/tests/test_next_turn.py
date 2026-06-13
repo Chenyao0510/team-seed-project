@@ -66,6 +66,42 @@ def test_next_turn_falls_back_on_gemini_failure(monkeypatch):
     assert body["turn_count"] == state["turn_count"] + 1
 
 
+def test_next_turn_propagates_emotion_from_llm_output(monkeypatch):
+    """LLM が返した emotion を新 State と chat_history (前ターン分) に伝播する。"""
+    state = load_debate_state()
+    fake_output = NextTurnLLMOutput(
+        active_character="Jobs",
+        current_speech="やってみればわかる。",
+        emotion="confident",
+        current_points=state["current_points"],
+        current_topic=state["current_topic"],
+    )
+    monkeypatch.setattr(gemini_client, "generate_next_turn", lambda s: fake_output)
+
+    response = client.post("/api/next_turn", json=state)
+    assert response.status_code == 200
+    body = response.json()
+
+    # 今ターンの emotion が State に乗っていること
+    assert body["emotion"] == "confident"
+    # 1 つ前のターン (state.active_character の発言) が chat_history に追記され、
+    # その emotion フィールドも前 State の emotion になっていること
+    archived = body["chat_history"][-1]
+    assert archived["emotion"] == state["emotion"]
+
+
+def test_next_turn_falls_back_to_neutral_emotion_on_failure(monkeypatch):
+    state = load_debate_state()
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("gemini unavailable")
+
+    monkeypatch.setattr(gemini_client, "generate_next_turn", _raise)
+    response = client.post("/api/next_turn", json=state)
+    assert response.status_code == 200
+    assert response.json()["emotion"] == "neutral"
+
+
 def test_next_turn_rejects_invalid_state():
     response = client.post("/api/next_turn", json={"theme": "テーマ"})
 

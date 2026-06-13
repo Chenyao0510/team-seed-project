@@ -112,10 +112,23 @@
     フォールバック・不正State 422 の3テスト）。合わせて T13 由来の既存 TS 型エラー
     (`frontend/src/lib/buildDebateState.ts`) を修正。`make verify-all` グリーン
     (pytest 9 passed / ruff / tsc / vite build 全通過)。
-- [ ] **T25** `[Both]`: 人物追加モーダルUIとアバター生成パイプライン（T12）の再利用
+- [x] **T25** `[Both]`: 人物追加モーダルUIとアバター生成パイプライン（T12）の再利用
   - Front: モーダル UI + `/api/add_character` 叩き + ステージへの追加描画
   - Back: T12 のパイプラインを再利用（API 変更なし）
   - 検証基準: 討論途中で名前を入力し、新規キャラがステージに追加されること
+  - 実績: 2026-06-13 実装完了。
+    - `DebateStage.tsx` の `ActionBar` 「人物追加」ボタンを活性化し、押下で `AddCharacterModal`
+      を表示。モーダルは名前入力 + 重複チェック（`state.characters` の `name` 一覧と一致したら
+      警告表示・送信ブロック）+ Enter 送信 / Esc キャンセル / クリックアウトでクローズ。
+    - 送信時に `addCharacter(name)` (`/api/add_character`) を叩いて `avatar_url` を取得し、
+      `onAddCharacter({name, avatar_url})` callback で親へ通知。送信中はオーバーレイクリックと
+      ボタン操作を無効化。エラー時はモーダル内に rose 色のメッセージを表示しモーダル維持。
+    - `App.tsx` で `onAddCharacter` を配線し、`state.characters` に新規キャラを append した
+      新規 State をセット（ミューテーションなし）。`CharactersRow` は既に `state.characters` を
+      `justify-between` で描画しているため、追加キャラは AI 群の末尾（ユーザーの左隣）に表示される。
+    - スキーマ変更なし（D01）。バックは T12 で実装済の `/api/add_character` を再利用。
+    - `make verify-all` グリーン（lint / tsc / ruff / pytest 9 passed / vite build 全通過）、
+      `dev-frontend` で `/` と `/?mock=debate` 両方 HTTP 200 を確認。
 - [ ] **T26** `[Front]`: Reflection Turn UI（介入の余白表示）
   - 目的:
     - ユーザーへ介入を強制しない
@@ -173,6 +186,7 @@
 ## 5. セッションログ
 セッション終了時にこのセクションへ追記する。
 
+- `2026-06-13`: T25 `[Both]` 人物追加モーダル UI 実装完了（バックは T12 `/api/add_character` を再利用、API/スキーマ変更なし）。`make verify-all` グリーン。
 - `2026-06-13`: T24 `[Back]` `/api/next_turn` 実装完了（D11）。`make verify-all` グリーン。
 - `2026-06-13`: T23 `[Front]` 介入アクション（異議・観点・質問）入力モード実装完了。`make verify-all` グリーン。
 

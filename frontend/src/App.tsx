@@ -27,11 +27,21 @@ function App() {
   }
 
   if (view.kind === 'debate') {
+    const current = view.state
     return (
       <DebateStage
-        state={view.state}
+        state={current}
         onIntervene={(next) => setView({ kind: 'debate', state: next })}
         onStateChange={(next) => setView({ kind: 'debate', state: next })}
+        onAddCharacter={(character) =>
+          setView({
+            kind: 'debate',
+            state: {
+              ...current,
+              characters: [...current.characters, character],
+            },
+          })
+        }
       />
     )
   }

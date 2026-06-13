@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
-import type { DebateState, DebateStatus, ChatHistoryEntry } from '../types/state'
-import { nextTurn } from '../api/client'
+import type { Character, DebateState, DebateStatus, ChatHistoryEntry } from '../types/state'
+import { addCharacter, nextTurn } from '../api/client'
 
 interface DebateStageProps {
   state: DebateState
   onOpenHistory?: () => void
   onStateChange?: (newState: DebateState) => void
   onIntervene?: (next: DebateState) => void
+  onAddCharacter?: (character: Character) => void
 }
 
 type InterventionKind = 'objection' | 'viewpoint' | 'question'
@@ -30,11 +31,25 @@ const STATUS_LABEL: Record<DebateStatus, string> = {
   waiting: '待機中',
 }
 
-export function DebateStage({ state, onOpenHistory, onStateChange, onIntervene }: DebateStageProps) {
+export function DebateStage({
+  state,
+  onOpenHistory,
+  onStateChange,
+  onIntervene,
+  onAddCharacter,
+}: DebateStageProps) {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isAddCharOpen, setIsAddCharOpen] = useState(false)
   const isActive = (name: string) => state.active_character === name
   const [intervention, setIntervention] = useState<InterventionKind | null>(null)
+
+  const existingNames = state.characters.map((c) => c.name)
+
+  const handleAddCharacter = async (character: Character) => {
+    onAddCharacter?.(character)
+    setIsAddCharOpen(false)
+  }
 
   const submitIntervention = (kind: InterventionKind, text: string) => {
     const trimmed = text.trim()
@@ -138,8 +153,18 @@ export function DebateStage({ state, onOpenHistory, onStateChange, onIntervene }
           intervention={intervention}
           onSelectIntervention={setIntervention}
           interventionEnabled={onIntervene !== undefined}
+          addCharacterEnabled={onAddCharacter !== undefined}
+          onOpenAddCharacter={() => setIsAddCharOpen(true)}
         />
       </main>
+
+      {isAddCharOpen && (
+        <AddCharacterModal
+          existingNames={existingNames}
+          onClose={() => setIsAddCharOpen(false)}
+          onCreated={handleAddCharacter}
+        />
+      )}
 
       {/* History Drawer Overlay & Panel */}
       {isHistoryOpen && (
@@ -456,12 +481,16 @@ interface ActionBarProps {
   intervention: InterventionKind | null
   onSelectIntervention: (kind: InterventionKind) => void
   interventionEnabled: boolean
+  addCharacterEnabled: boolean
+  onOpenAddCharacter: () => void
 }
 
 function ActionBar({
   intervention,
   onSelectIntervention,
   interventionEnabled,
+  addCharacterEnabled,
+  onOpenAddCharacter,
 }: ActionBarProps) {
   const interventionButtonsDisabled = !interventionEnabled || intervention !== null
 
@@ -485,9 +514,9 @@ function ActionBar({
       <button
         type="button"
         data-testid="action-add-character"
-        disabled
-        title="人物追加（T25 で実装予定）"
-        className="rounded-md border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-40"
+        onClick={onOpenAddCharacter}
+        disabled={!addCharacterEnabled || intervention !== null}
+        className="rounded-md border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
       >
         人物追加
       </button>
@@ -504,5 +533,116 @@ function ActionBar({
         議論を整理する
       </button>
     </nav>
+  )
+}
+
+interface AddCharacterModalProps {
+  existingNames: string[]
+  onClose: () => void
+  onCreated: (character: Character) => void | Promise<void>
+}
+
+function AddCharacterModal({ existingNames, onClose, onCreated }: AddCharacterModalProps) {
+  const [name, setName] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const trimmed = name.trim()
+  const isDuplicate = existingNames.includes(trimmed)
+  const canSubmit = trimmed.length > 0 && !isDuplicate && !isSubmitting
+
+  const submit = async () => {
+    if (!canSubmit) return
+    setError(null)
+    setIsSubmitting(true)
+    try {
+      const { avatar_url } = await addCharacter(trimmed)
+      await onCreated({ name: trimmed, avatar_url })
+    } catch (err) {
+      console.error(err)
+      setError('アバター生成に失敗しました。時間をおいて再試行してください。')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div
+      data-testid="add-character-modal"
+      className="absolute inset-0 z-50 flex items-center justify-center"
+    >
+      <div
+        data-testid="add-character-overlay"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={() => {
+          if (!isSubmitting) onClose()
+        }}
+      />
+      <div className="relative w-full max-w-md rounded-2xl border border-slate-600 bg-slate-800 p-6 shadow-2xl">
+        <h2 className="mb-1 text-lg font-semibold text-slate-100">人物を追加</h2>
+        <p className="mb-4 text-xs text-slate-400">
+          名前を入力すると、アバターを生成してステージに追加します。
+        </p>
+        <label
+          htmlFor="add-character-name"
+          className="mb-1 block text-xs font-semibold text-slate-300"
+        >
+          名前
+        </label>
+        <input
+          id="add-character-name"
+          data-testid="add-character-input"
+          autoFocus
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              if (!isSubmitting) onClose()
+            } else if (e.key === 'Enter') {
+              e.preventDefault()
+              void submit()
+            }
+          }}
+          disabled={isSubmitting}
+          placeholder="例: 織田信長"
+          className="w-full rounded-md border border-slate-600 bg-slate-900/60 px-4 py-2 text-slate-100 placeholder:text-slate-500 focus:border-emerald-400 focus:outline-none disabled:opacity-60"
+        />
+        {isDuplicate && (
+          <p
+            data-testid="add-character-duplicate"
+            className="mt-2 text-xs text-amber-300"
+          >
+            この名前は既にステージにいます。
+          </p>
+        )}
+        {error && (
+          <p data-testid="add-character-error" className="mt-2 text-xs text-rose-300">
+            {error}
+          </p>
+        )}
+        <div className="mt-5 flex justify-end gap-3">
+          <button
+            type="button"
+            data-testid="add-character-cancel"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="rounded-md border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:border-slate-400 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            キャンセル
+          </button>
+          <button
+            type="button"
+            data-testid="add-character-submit"
+            onClick={() => void submit()}
+            disabled={!canSubmit}
+            className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400"
+          >
+            {isSubmitting ? '生成中...' : '追加'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

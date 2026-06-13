@@ -9,6 +9,14 @@ function App() {
 
   return (
     <>
+      {/* T02 Tailwind smoke -- remove when T11 (Screen 0) lands */}
+      <div
+        data-testid="tailwind-smoke"
+        className="mx-auto mt-4 inline-block rounded-md bg-emerald-500 px-4 py-2 font-bold tracking-wide text-white"
+      >
+        Tailwind ready
+      </div>
+
       <section id="center">
         <div className="hero">
           <img src={heroImg} className="base" width="170" height="179" alt="" />

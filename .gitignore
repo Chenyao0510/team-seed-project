@@ -29,3 +29,6 @@ Thumbs.db
 
 # Build / cache
 *.log
+
+# Reference course material — keep local only
+learn-harness-engineering/

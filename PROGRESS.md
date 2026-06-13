@@ -29,10 +29,10 @@
 **直近の verify**: 未実施。最初のタスクで `make init && make verify-all` を通す。
 
 ## 3. 既知の問題
-- `frontend/` に Tailwind CSS 未導入（タスク T02 で追加）
 - Gemini API キー (`GEMINI_API_KEY`) の動作確認未実施
 - frontend に vitest 未導入（`make test` は backend のみ実行）
 - 画像生成API (Nanobanana) / 透過APIのキー設定および疎通未確認
+- `App.tsx` に T02 用 Tailwind smoke 要素が残置中（T11 着手時に削除する）
 
 ### 並行作業の準備物（完了済）
 - `fixtures/` にフロント・バック共有の State JSON サンプル配置
@@ -52,8 +52,9 @@
 - [x] **T01** `[Both]`: `make init` で全依存関係インストール、`make verify-all` がグリーン
   - 検証基準: `/api/health` が 200 を返す、frontend `vite build` が成功、pytest がグリーン
   - 実績: 2026-06-13 セッションで `make verify-all` グリーン確認済 (frontend lint / tsc / ruff / pytest 1 passed / vite build 全通過)
-- [ ] **T02** `[Front]`: フロントに Tailwind CSS v4 を導入し、`@import "tailwindcss"` を有効化
+- [x] **T02** `[Front]`: フロントに Tailwind CSS v4 を導入し、`@import "tailwindcss"` を有効化
   - 検証基準: 任意の Tailwind クラスが効くサンプル要素で確認
+  - 実績: `tailwindcss@4.3.1` + `@tailwindcss/vite@4.3.1` 追加、`vite.config.ts` にプラグイン追加、`src/index.css` に `@import "tailwindcss";` 追加。`App.tsx` に smoke 要素 (`data-testid="tailwind-smoke"`) を仮置きし、build 出力 CSS に `.bg-emerald-500` / `.rounded-md` / `.font-bold` / `.text-white` 全 4 クラス含有を grep で確認。CSS サイズ 4.10 → 10.81 kB。smoke は T11 着手時に削除予定。
 
 ### Phase 1: Screen 0 (テーマ入力と初期化)
 - [ ] **T11** `[Front]`: テーマ入力フォーム + 初期登場人物入力 UI

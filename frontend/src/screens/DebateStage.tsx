@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef, Fragment } from 'react'
+import { useEffect, useState, useRef, Fragment, useCallback } from 'react'
 import { AnimatePresence, motion, useIsPresent } from 'framer-motion'
-import type { Character, DebateState, DebateStatus, ChatHistoryEntry, ReflectionSummary } from '../types/state'
-import { addCharacter, nextTurn, reflection, API_BASE_URL } from '../api/client'
+import type { Character, DebateState, DebateStatus, ChatHistoryEntry, ReflectionSummary, AgentThought } from '../types/state'
+import { addCharacter, nextTurn, reflection, think, API_BASE_URL } from '../api/client'
 
 // PointsPanel (T33) のアニメーション秒数（CONSTRAINTS.md: マジックナンバー禁止）。
 // 1ターンで「追加=最大1 / 入れ替え=最大1」を Gemini 側で強制し (D11 prompt)、
@@ -68,6 +68,7 @@ export function DebateStage({
   const [showReflection, setShowReflection] = useState(false)
   const [reflectionSummary, setReflectionSummary] = useState<ReflectionSummary | null>(null)
   const [reflectionLoading, setReflectionLoading] = useState(false)
+  const [prefetchedReflection, setPrefetchedReflection] = useState<ReflectionSummary | null>(null)
 
   const existingNames = state.characters.map((c) => c.name)
 
@@ -84,8 +85,11 @@ export function DebateStage({
       active_character: state.user.name,
       current_speech: `（${INTERVENTION_LABEL[kind]}）${trimmed}`,
       status: 'speaking',
+      agent_thoughts: {},
     })
     setIntervention(null)
+    // 介入後は文脈が変わるためキャッシュをクリア (T65)
+    setPrefetchedReflection(null)
   }
 
   const handleOpenHistory = () => {
@@ -95,11 +99,13 @@ export function DebateStage({
 
   const handleReflectionContinue = () => {
     setShowReflection(false)
+    setPrefetchedReflection(null)
     void handleNextTurn()
   }
 
   const handleReflectionIntervention = (kind: InterventionKind) => {
     setShowReflection(false)
+    setPrefetchedReflection(null)
     setIntervention(kind)
   }
 
@@ -107,14 +113,27 @@ export function DebateStage({
   // REFLECTION_INTERVAL の倍数になったら Reflection Panel を表示し、
   // facilitator 一言 + 論点×立場×キャラの構造化要約を /api/reflection から取得する。
   const maybeShowReflection = (newState: DebateState) => {
-    if (newState.turn_count % REFLECTION_INTERVAL === 0) {
+    const isReflectionTurn = newState.turn_count % REFLECTION_INTERVAL === 0
+    const isPreFetchTurn = newState.turn_count % REFLECTION_INTERVAL === REFLECTION_INTERVAL - 1
+
+    if (isReflectionTurn) {
       setShowReflection(true)
-      setReflectionSummary(null)
-      setReflectionLoading(true)
+      if (prefetchedReflection) {
+        setReflectionSummary(prefetchedReflection)
+        setReflectionLoading(false)
+      } else {
+        setReflectionSummary(null)
+        setReflectionLoading(true)
+        reflection(newState)
+          .then((summary) => setReflectionSummary(summary))
+          .catch((err) => console.error(err))
+          .finally(() => setReflectionLoading(false))
+      }
+    } else if (isPreFetchTurn) {
+      // 次のターンがリフレクションなので先行取得しておく (T65)
       reflection(newState)
-        .then((summary) => setReflectionSummary(summary))
-        .catch((err) => console.error(err))
-        .finally(() => setReflectionLoading(false))
+        .then((summary) => setPrefetchedReflection(summary))
+        .catch((err) => console.error('Pre-fetch reflection failed:', err))
     }
   }
 
@@ -132,6 +151,48 @@ export function DebateStage({
       setIsGenerating(false)
     }
   }
+
+  const handleThink = useCallback(async (currentState: DebateState) => {
+    if (isGenerating || !onStateChange) return
+    // すでに思考結果がある、または待機中以外はスキップ（多重発火防止）
+    if (currentState.status !== 'speaking' || (currentState.agent_thoughts && Object.keys(currentState.agent_thoughts).length > 0)) {
+      return
+    }
+
+    // status: thinking への遷移はバックエンドで行われるが、
+    // フロントエンドでも即座に isGenerating を true にしてガードする
+    setIsGenerating(true)
+    try {
+      const newState = await think(currentState)
+      // 通信中にユーザーが介入ボタンを押した場合は、結果を反映しない (T63)
+      if (interventionRef.current === null) {
+        onStateChange(newState)
+      }
+    } catch (err) {
+      console.error('Auto-think failed:', err)
+    } finally {
+      setIsGenerating(false)
+    }
+  }, [isGenerating, onStateChange])
+
+  // 最新の intervention 状態を参照するための Ref
+  const interventionRef = useRef<InterventionKind | null>(intervention)
+  useEffect(() => {
+    interventionRef.current = intervention
+  }, [intervention])
+
+  // 発言が完了したタイミングで自動的に「思考」を開始する (T63)
+  useEffect(() => {
+    if (state.status === 'speaking' && state.current_speech !== '' && !isGenerating) {
+      // ユーザーが介入モード（モーダル入力中など）でないことを確認
+      if (intervention === null && !isAddCharOpen && !showReflection) {
+        const timer = setTimeout(() => {
+          void handleThink(state)
+        }, 1500) // 少し待ってから思考開始（読了感のため）
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [state.current_speech, state.status, isGenerating, intervention, isAddCharOpen, showReflection, handleThink, state])
 
   // 最初の発言がない場合は自動でAPIを叩いて会話を始める
   useEffect(() => {
@@ -176,10 +237,12 @@ export function DebateStage({
           <section className="flex flex-1 flex-col">
             <CharactersRow
               characters={state.characters}
-              isActive={isActive}
+              isActive={(name) => (intervention || showReflection ? false : isActive(name))}
               status={state.status}
               userName={state.user.name}
               userAvatarUrl={state.user.avatar_url || USER_AVATAR_FALLBACK}
+              agentThoughts={intervention || showReflection ? {} : state.agent_thoughts}
+              isUserActive={!!intervention || showReflection || isActive(state.user.name)}
             />
             <div className="relative">
               <TelopBox
@@ -190,6 +253,7 @@ export function DebateStage({
                 onCancel={() => setIntervention(null)}
                 onSubmit={(text) => submitIntervention(intervention!, text)}
                 userName={state.user.name}
+                agentThoughts={state.agent_thoughts}
               />
               {/* 進行ボタンをテロップ横か下に配置 */}
               <div className="mx-auto mt-4 flex max-w-3xl justify-end">
@@ -705,52 +769,87 @@ interface CharactersRowProps {
   status: DebateStatus
   userName: string
   userAvatarUrl: string
+  agentThoughts?: Record<string, AgentThought>
+  isUserActive?: boolean
 }
 
-function CharactersRow({ characters, isActive, status, userName, userAvatarUrl }: CharactersRowProps) {
+function CharactersRow({ characters, isActive, status, userName, userAvatarUrl, agentThoughts, isUserActive }: CharactersRowProps) {
   return (
     <div
       data-testid="stage-row"
       className="flex flex-1 items-end justify-between gap-6 px-2"
     >
       <ul className="flex items-end gap-8">
-        {characters.map((c) => (
-          <li
-            key={c.name}
-            data-testid="stage-character"
-            data-active={isActive(c.name) ? 'true' : 'false'}
-            className={[
-              'flex flex-col items-center transition-all duration-300 ease-out',
-              isActive(c.name) ? 'scale-110' : 'scale-95 opacity-60',
-            ].join(' ')}
-          >
-            <div
+        {/* ... (AI characters loop) ... */}
+        {characters.map((c) => {
+          const active = isActive(c.name)
+          const thought = agentThoughts?.[c.name]
+          const isWilling = thought?.willingness_to_speak
+
+          return (
+            <li
+              key={c.name}
+              data-testid="stage-character"
+              data-active={active ? 'true' : 'false'}
               className={[
-                'h-28 w-28 overflow-hidden rounded-full bg-slate-700',
-                isActive(c.name)
-                  ? 'shadow-[0_0_30px_rgba(52,211,153,0.6)] ring-4 ring-emerald-400'
-                  : 'ring-2 ring-slate-600',
+                'flex flex-col items-center transition-all duration-300 ease-out',
+                active ? 'scale-110' : 'scale-95 opacity-60',
               ].join(' ')}
             >
-              <img
-                src={c.avatar_url}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            </div>
-            <p className="mt-3 text-sm font-semibold">{c.name}</p>
-            {isActive(c.name) && (
-              <span className="mt-1 text-xs text-emerald-300">
-                {STATUS_LABEL[status]}
-              </span>
-            )}
-          </li>
-        ))}
+              <div className="relative">
+                <div
+                  className={[
+                    'h-28 w-28 overflow-hidden rounded-full bg-slate-700',
+                    active
+                      ? 'shadow-[0_0_30px_rgba(52,211,153,0.6)] ring-4 ring-emerald-400'
+                      : 'ring-2 ring-slate-600',
+                  ].join(' ')}
+                >
+                  <img
+                    src={c.avatar_url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                {/* 発言意欲のインジケーター (T63) */}
+                {status === 'thinking' && isWilling && (
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="absolute -right-2 -top-2 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 shadow-lg"
+                    title="発言したい！"
+                  >
+                    <span className="text-lg">✋</span>
+                  </motion.div>
+                )}
+              </div>
+              <p className="mt-3 text-sm font-semibold">{c.name}</p>
+              {active && (
+                <span className="mt-1 text-xs text-emerald-300">
+                  {status === 'thinking' ? '思考中...' : STATUS_LABEL[status]}
+                </span>
+              )}
+            </li>
+          )
+        })}
       </ul>
 
       {/* User avatar is fixed at the far right (PROJECT.md spec). T58: Screen 0 で登録した user.avatar_url を表示。 */}
-      <div data-testid="stage-user" className="flex flex-col items-center">
-        <div className="h-28 w-28 overflow-hidden rounded-full bg-slate-700 ring-2 ring-amber-300">
+      <div
+        data-testid="stage-user"
+        className={[
+          'flex flex-col items-center transition-all duration-300 ease-out',
+          isUserActive ? 'scale-110' : 'scale-95 opacity-60',
+        ].join(' ')}
+      >
+        <div
+          className={[
+            'h-28 w-28 overflow-hidden rounded-full bg-slate-700',
+            isUserActive
+              ? 'shadow-[0_0_30px_rgba(251,191,36,0.6)] ring-4 ring-amber-400'
+              : 'ring-2 ring-slate-600',
+          ].join(' ')}
+        >
           <img
             src={userAvatarUrl}
             alt=""
@@ -758,6 +857,11 @@ function CharactersRow({ characters, isActive, status, userName, userAvatarUrl }
           />
         </div>
         <p className="mt-3 text-sm font-semibold text-amber-200">{userName}</p>
+        {isUserActive && (
+          <span className="mt-1 text-xs text-amber-300">
+            {isUserActive && !isActive(userName) ? '入力中...' : (status === 'speaking' ? '発言中' : '待機中')}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -771,6 +875,7 @@ interface TelopBoxProps {
   onCancel: () => void
   onSubmit: (text: string) => void
   userName?: string
+  agentThoughts?: Record<string, AgentThought>
 }
 
 function TelopBox({
@@ -781,6 +886,7 @@ function TelopBox({
   onCancel,
   onSubmit,
   userName = 'あなた',
+  agentThoughts,
 }: TelopBoxProps) {
   const empty = speech.trim().length === 0
   const [draft, setDraft] = useState('')
@@ -904,11 +1010,16 @@ function TelopBox({
       className="mx-auto mt-6 w-full max-w-3xl rounded-2xl border-2 border-slate-600 bg-slate-800/90 px-8 py-6 shadow-2xl"
     >
       {empty ? (
-        <p className="text-slate-400" data-testid="telop-empty">
-          {status === 'thinking'
-            ? `${speaker || 'AI'} が思考中...`
-            : '議論が始まるのを待っています...'}
-        </p>
+        <div className="flex flex-col gap-1" data-testid="telop-empty">
+          <p className="text-slate-400">
+            {status === 'thinking'
+              ? (Object.keys(agentThoughts || {}).length > 0 ? '発言の準備が整いました' : 'AIたちが思考中...')
+              : '議論が始まるのを待っています...'}
+          </p>
+          {status === 'thinking' && Object.keys(agentThoughts || {}).length > 0 && (
+            <p className="text-xs text-emerald-400 animate-pulse">「次へ」を押して議論を再開してください</p>
+          )}
+        </div>
       ) : (
         <>
           <div className="mb-2 flex items-center justify-between">

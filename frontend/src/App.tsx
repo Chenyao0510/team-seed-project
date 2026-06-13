@@ -83,6 +83,7 @@ function App() {
             state: {
               ...current,
               characters: [...current.characters, character],
+              agent_thoughts: {},
             },
             isSummarizing: false,
           })

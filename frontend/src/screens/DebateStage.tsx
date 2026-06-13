@@ -6,6 +6,15 @@ interface DebateStageProps {
   state: DebateState
   onOpenHistory?: () => void
   onStateChange?: (newState: DebateState) => void
+  onIntervene?: (next: DebateState) => void
+}
+
+type InterventionKind = 'objection' | 'viewpoint' | 'question'
+
+const INTERVENTION_LABEL: Record<InterventionKind, string> = {
+  objection: '異議',
+  viewpoint: '観点',
+  question: '質問',
 }
 
 // T12 が `/api/add_character` を実装するまでの暫定。ユーザーアバターも同じ穴で吸収。
@@ -21,7 +30,7 @@ const STATUS_LABEL: Record<DebateStatus, string> = {
   waiting: '待機中',
 }
 
-export function DebateStage({ state, onOpenHistory, onStateChange }: DebateStageProps) {
+export function DebateStage({ state, onOpenHistory, onStateChange, onIntervene }: DebateStageProps) {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const isActive = (name: string) => state.active_character === name
@@ -95,31 +104,41 @@ export function DebateStage({ state, onOpenHistory, onStateChange }: DebateStage
         <div className="flex flex-1 gap-6">
           <PointsPanel points={state.current_points} />
 
-        <section className="flex flex-1 flex-col">
-          <CharactersRow
-            characters={state.characters}
-            isActive={isActive}
-            status={state.status}
-          />
-          <div className="relative">
-            <TelopBox
-              speaker={state.active_character}
-              speech={state.current_speech}
-              status={isGenerating ? 'thinking' : state.status}
+          <section className="flex flex-1 flex-col">
+            <CharactersRow
+              characters={state.characters}
+              isActive={isActive}
+              status={state.status}
             />
-            {/* 進行ボタンをテロップ横か下に配置 */}
-            <div className="mx-auto mt-4 flex max-w-3xl justify-end">
-              <button
-                type="button"
-                onClick={handleNextTurn}
-                disabled={isGenerating}
-                className="rounded bg-emerald-600 px-6 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isGenerating ? '思考中...' : '次へ ❯'}
-              </button>
+            <div className="relative">
+              <TelopBox
+                speaker={state.active_character}
+                speech={state.current_speech}
+                status={isGenerating ? 'thinking' : state.status}
+                intervention={intervention}
+                onCancel={() => setIntervention(null)}
+                onSubmit={(text) => submitIntervention(intervention!, text)}
+              />
+              {/* 進行ボタンをテロップ横か下に配置 */}
+              <div className="mx-auto mt-4 flex max-w-3xl justify-end">
+                <button
+                  type="button"
+                  onClick={handleNextTurn}
+                  disabled={isGenerating}
+                  className="rounded bg-emerald-600 px-6 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isGenerating ? '思考中...' : '次へ ❯'}
+                </button>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
+
+        <ActionBar
+          intervention={intervention}
+          onSelectIntervention={setIntervention}
+          interventionEnabled={onIntervene !== undefined}
+        />
       </main>
 
       {/* History Drawer Overlay & Panel */}

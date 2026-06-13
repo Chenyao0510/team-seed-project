@@ -1,0 +1,24 @@
+{
+  "theme": "大学は必要か？",
+  "current_topic": "AI時代における専門知識の価値",
+  "active_character": "Socrates",
+  "status": "thinking",
+  "current_speech": "知識そのものよりも、無知の知を自覚する場として大学はまだ価値を保ち得る。しかしそれは制度としてではなく、出会いの場としてだ。",
+  "current_points": [
+    "スキルの陳腐化速度",
+    "偶発的な人脈形成",
+    "モラトリアムの確保"
+  ],
+  "chat_history": [
+    {
+      "speaker": "Jobs",
+      "text": "大学なんて時間の無駄だ。私はリードを中退して、それでも世界を変えた。",
+      "avatar_url": "https://placeholder.example/jobs.png"
+    },
+    {
+      "speaker": "Socrates",
+      "text": "では問う。汝が中退したから世界を変えられたのか、それとも変えるべき何かを既に持っていたから中退できたのか。",
+      "avatar_url": "https://placeholder.example/socrates.png"
+    }
+  ]
+}

@@ -42,12 +42,23 @@ docs/ARCHITECTURE.md -- システム設計
 
 ## 作業ルール
 
-- **タスクは同時に 1 つのみ**。並行進行禁止
+- **同一人物は同時に 1 タスクのみ**（フロント担当・バック担当はお互い独立に 1 タスクずつ並行可）
 - 完了判断は自己申告ではなく、`make verify-all` と動作確認の結果に基づく
 - アーキテクチャに変更を加えるなら、先に `docs/ARCHITECTURE.md` を更新する
 - マジックナンバー禁止。命名定数を使う
 - ミューテーション禁止。新しいオブジェクトを返す
 - ファイル <800 行、関数 <50 行を目安
+
+## 並行作業ルール (フロント / バック 2 人体制)
+
+- 担当は `PROGRESS.md` の各タスクに `[Front]` / `[Back]` / `[Both]` で明示する
+- 個人ブランチ: `feat/front-*` または `feat/back-*` を切り、小さい PR で `main` にマージ
+- 定期的に相手の変更を取り込む（`git pull --rebase`）。`PROGRESS.md` を編集する直前にも必ず rebase
+- `PROGRESS.md` のタスク状態更新（`[~]` / `[x]`）はコンフリクト多発ポイント。自分の担当行だけを触る
+- **フロント開発は backend 起動不要**: `frontend/src/mocks/` の sample State JSON を使って描画を進められる
+- **バック開発は実装と並行**: `backend/tests/fixtures/` の同じ JSON を使って pydantic / pytest を回す
+- フロント・バックが参照する canonical fixture は **リポジトリルートの `fixtures/`** に置く（両側はそこを指すだけ）
+- API スキーマ / State 構造を変えるときは: `DECISIONS.md` D01 → `docs/ARCHITECTURE.md` → `fixtures/*.json` → フロント・バック実装、の順序を**同一 PR で**揃える（分けない）
 
 ## 退勤ルーティン (セッション終了時)
 

@@ -1,0 +1,21 @@
+{
+  "before_question": "大学は行くべきか？",
+  "after_question": "不確実な時代において、知識と人脈どちらにコストをかけるべきか？",
+  "structure_map": [
+    {
+      "category_name": "知識・スキルのレイヤー",
+      "elements": ["専門性の獲得", "課題解決へのアプローチ"]
+    },
+    {
+      "category_name": "資本・ネットワークのレイヤー",
+      "elements": ["スクランブル交差点", "地方学生のハブ"],
+      "highlighted_element_index": 1
+    },
+    {
+      "category_name": "時間・モラトリアムのレイヤー",
+      "elements": ["自己探索の余白", "進路選択の延期コスト"]
+    }
+  ],
+  "user_catalyst": "地方格差の視点",
+  "connective_value_praise": "あなたの「地方格差の視点」により、個人の損得の議論が、社会構造の機会均等というレイヤーへと拡張・統合されました。"
+}

@@ -34,47 +34,59 @@
 - frontend に vitest 未導入（`make test` は backend のみ実行）
 - 画像生成API (Nanobanana) / 透過APIのキー設定および疎通未確認
 
+### 並行作業の準備物（完了済）
+- `fixtures/` にフロント・バック共有の State JSON サンプル配置
+- `frontend/src/mocks/` から import 可能（backend 起動不要で描画開発できる）
+- `backend/tests/fixtures/` で同じ JSON を pytest 検証
+- 担当割り当て: 下記タスクキューに `[Front]` / `[Back]` / `[Both]` で明示
+- 詳細ルールは `AGENTS.md` の「並行作業ルール」セクション参照
+
 ---
 
 ## 4. タスクキュー
 
 凡例: `[ ]` Todo / `[~]` In Progress / `[x]` Done
+凡例の担当: `[Front]` / `[Back]` / `[Both]`（要連携）
 
 ### Phase 0: ベースライン疎通
-- [x] **T01**: `make init` で全依存関係インストール、`make verify-all` がグリーン
+- [x] **T01** `[Both]`: `make init` で全依存関係インストール、`make verify-all` がグリーン
   - 検証基準: `/api/health` が 200 を返す、frontend `vite build` が成功、pytest がグリーン
   - 実績: 2026-06-13 セッションで `make verify-all` グリーン確認済 (frontend lint / tsc / ruff / pytest 1 passed / vite build 全通過)
-- [ ] **T02**: フロントに Tailwind CSS v4 を導入し、`@import "tailwindcss"` を有効化
+- [ ] **T02** `[Front]`: フロントに Tailwind CSS v4 を導入し、`@import "tailwindcss"` を有効化
   - 検証基準: 任意の Tailwind クラスが効くサンプル要素で確認
 
 ### Phase 1: Screen 0 (テーマ入力と初期化)
-- [ ] **T11**: テーマ入力フォーム + 初期登場人物入力 UI
+- [ ] **T11** `[Front]`: テーマ入力フォーム + 初期登場人物入力 UI
   - 検証基準: 入力した人物名がリスト化されること
-- [ ] **T12**: 動的アバター生成パイプラインの実装と接続
+- [ ] **T12** `[Both]`: 動的アバター生成パイプラインの実装と接続
+  - Back: `/api/add_character` を実装（Gemini Search → 画像生成 → 透過処理）
+  - Front: 各メンバー名で順に叩き、avatar_url を State に集約
   - 検証基準: 初期メンバー名からGemini検索→Nanobanana生成→透過処理が走り、画像URLの配列が返却されること
-- [ ] **T13**: Screen 0 から Screen 1 への遷移と State 引き継ぎ
+- [ ] **T13** `[Front]`: Screen 0 から Screen 1 への遷移と State 引き継ぎ
   - 検証基準: 生成された画像URLを含むStateが Screen 1 に渡り、初期描画に利用されること
 
 ### Phase 2: Screen 1 (討論 + 介入)
-- [ ] **T21**: ギャルゲ風横並びステージUI（登場人物カード + 中央テロップエリア）
-  - 検証基準: モック State で発話が表示され、ユーザーアバターが右端に配置される
-- [ ] **T22**: LINE風の過去ログUI（小さな丸アイコン付きスライドインパネル）
+- [ ] **T21** `[Front]`: ギャルゲ風横並びステージUI（登場人物カード + 中央テロップエリア）
+  - 検証基準: モック State (`frontend/src/mocks/debateStateSample`) で発話が表示され、ユーザーアバターが右端に配置される
+- [ ] **T22** `[Front]`: LINE風の過去ログUI（小さな丸アイコン付きスライドインパネル）
   - 検証基準: トグルでログ表示/非表示が切り替わり、アイコンが正しく表示される
-- [ ] **T23**: 介入アクション（異議・観点・質問）の入力モード実装
+- [ ] **T23** `[Front]`: 介入アクション（異議・観点・質問）の入力モード実装
   - 検証基準: キーボード入力が中央テロップに表示され、Stateに追記される
-- [ ] **T24**: バック `/api/next_turn` 実装（State 受け取り → Gemini JSON構造化生成 → State 返却）
-  - 検証基準: LangGraphなしで、Geminiが正しく次のキャラと発言、論点リストを更新して返す
-- [ ] **T25**: 人物追加モーダルUIとアバター生成パイプライン（T12）の再利用
+- [ ] **T24** `[Back]`: `/api/next_turn` 実装（State 受け取り → Gemini JSON構造化生成 → State 返却）
+  - 検証基準: LangGraphなしで、Geminiが正しく次のキャラと発言、論点リストを更新して返す（pytest で `backend/tests/fixtures` のサンプルから検証）
+- [ ] **T25** `[Both]`: 人物追加モーダルUIとアバター生成パイプライン（T12）の再利用
+  - Front: モーダル UI + `/api/add_character` 叩き + ステージへの追加描画
+  - Back: T12 のパイプラインを再利用（API 変更なし）
   - 検証基準: 討論途中で名前を入力し、新規キャラがステージに追加されること
 
 ### Phase 3: Screen 2 (結論)
-- [ ] **T31**: バック `/api/summarize` 実装（全履歴 → Gemini JSON統合レポート生成）
-  - 検証基準: pytest で構造化レポート (Before/After/Bento UI用Map) が返る
-- [ ] **T32**: 結論画面 UI（枠なしBento UI、staggerアニメーション、介入称賛）
-  - 検証基準: Framer Motionでカードが順次構築され、T31のレスポンスを表示できる
+- [ ] **T31** `[Back]`: `/api/summarize` 実装（全履歴 → Gemini JSON統合レポート生成）
+  - 検証基準: pytest で構造化レポート (Before/After/Bento UI用Map) が返る（`integration_state_sample.json` のスキーマに準拠）
+- [ ] **T32** `[Front]`: 結論画面 UI（枠なしBento UI、staggerアニメーション、介入称賛）
+  - 検証基準: モック State (`integrationStateSample`) を Framer Motion で順次構築でき、API 接続後も同様に動く
 
 ### Phase 4: E2E 統合
-- [ ] **T41**: Screen 0 → 1 → 2 のエンドツーエンドシナリオテスト
+- [ ] **T41** `[Both]`: Screen 0 → 1 → 2 のエンドツーエンドシナリオテスト
   - 検証基準: 1 シナリオを通しで実行し、アバター生成から最終マップ構築までStateが破綻しない
 
 ---
@@ -86,6 +98,7 @@
 
 ## 6. ハンドオフメモ
 次セッションが最初に読むべきメモ:
-- まずは T01 から。`make init` で全 deps を入れ、`make verify-all` がグリーンになることを確認する。
+- T01 は完了済。各自 `make verify-all` がグリーンになることだけ確認してから着手する。
 - T12（アバター生成パイプライン）はScreen 0とScreen 1(T25)で共通利用するため、再利用可能な関数・APIとして設計すること。
 - 状態管理はLangGraphを使わず、すべてGeminiのStructured Outputに依存する設計方針に注意。
+- フロント・バック並行作業のため、`fixtures/` の State JSON をスキーマ Source of Truth として扱う。スキーマ変更時は `DECISIONS.md` D01 → `docs/ARCHITECTURE.md` → `fixtures/*.json` を同一 PR で揃える。

@@ -9,7 +9,11 @@ export interface SetupMember {
 export interface SetupResult {
   theme: string
   members: SetupMember[]
+  // T58: ユーザー自身のアバター（任意）。未登録なら null。
+  userAvatarUrl: string | null
 }
+
+type UserAvatarMode = 'upload' | 'generate'
 
 interface SetupScreenProps {
   // T13 で navigation を担当する callback。T11 時点では未配線で OK。
@@ -21,10 +25,12 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
   const [memberInput, setMemberInput] = useState('')
   const [members, setMembers] = useState<SetupMember[]>([])
   const [loadingMembers, setLoadingMembers] = useState<Set<string>>(new Set())
+  const [userAvatarUrl, setUserAvatarUrl] = useState<string | null>(null)
+  const [userAvatarGenerating, setUserAvatarGenerating] = useState(false)
 
   const trimmedInput = memberInput.trim()
   const canAdd = trimmedInput.length > 0 && !members.some((m) => m.name === trimmedInput)
-  const isAvatarLoading = loadingMembers.size > 0
+  const isAvatarLoading = loadingMembers.size > 0 || userAvatarGenerating
   const canSubmit =
     theme.trim().length > 0 && members.length >= 2 && !isAvatarLoading
 
@@ -59,7 +65,7 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
 
   const submit = () => {
     if (!canSubmit) return
-    onSubmit?.({ theme: theme.trim(), members })
+    onSubmit?.({ theme: theme.trim(), members, userAvatarUrl })
   }
 
   return (
@@ -167,6 +173,17 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
         )}
       </section>
 
+      <section className="mb-6">
+        <label className="mb-2 block text-sm font-semibold text-gray-700">
+          あなたのアバター（任意）
+        </label>
+        <UserAvatarField
+          avatarUrl={userAvatarUrl}
+          onChange={setUserAvatarUrl}
+          onGeneratingChange={setUserAvatarGenerating}
+        />
+      </section>
+
       <button
         type="button"
         onClick={submit}
@@ -176,6 +193,142 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
       >
         {isAvatarLoading ? 'アバター生成中...' : '議論を開始する'}
       </button>
+    </div>
+  )
+}
+
+interface UserAvatarFieldProps {
+  avatarUrl: string | null
+  onChange: (url: string | null) => void
+  // 親の canSubmit ゲート用に AI 生成中かどうかを通知する。
+  onGeneratingChange: (generating: boolean) => void
+}
+
+// T58: ユーザー自身のアバター登録。画像アップロード（dataURL）と、メンバーと同じ
+// add_character パイプラインでの AI 生成の 2 モードをトグルで切り替える。
+function UserAvatarField({ avatarUrl, onChange, onGeneratingChange }: UserAvatarFieldProps) {
+  const [mode, setMode] = useState<UserAvatarMode>('upload')
+  const [generateInput, setGenerateInput] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleFile = (file: File | undefined) => {
+    if (!file) return
+    setError(null)
+    const reader = new FileReader()
+    reader.onload = () =>
+      onChange(typeof reader.result === 'string' ? reader.result : null)
+    reader.onerror = () => setError('画像の読み込みに失敗しました。')
+    reader.readAsDataURL(file)
+  }
+
+  const handleGenerate = async () => {
+    const keyword = generateInput.trim()
+    if (keyword.length === 0 || generating) return
+    setError(null)
+    setGenerating(true)
+    onGeneratingChange(true)
+    try {
+      const { avatar_url } = await addCharacter(keyword)
+      onChange(avatar_url)
+    } catch {
+      setError('アバター生成に失敗しました。時間をおいて再試行してください。')
+    } finally {
+      setGenerating(false)
+      onGeneratingChange(false)
+    }
+  }
+
+  const tab = (value: UserAvatarMode, label: string) => (
+    <button
+      type="button"
+      onClick={() => setMode(value)}
+      className={`rounded-md px-3 py-1.5 text-sm font-semibold ${
+        mode === value
+          ? 'bg-emerald-500 text-white'
+          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+      }`}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <div data-testid="user-avatar-field" className="flex items-start gap-4">
+      <span
+        data-testid="user-avatar-preview"
+        className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 ring-2 ring-amber-300"
+      >
+        {avatarUrl ? (
+          <img src={avatarUrl} alt="あなたのアバター" className="h-full w-full object-cover" />
+        ) : generating ? (
+          <span
+            data-testid="user-avatar-loading"
+            className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-emerald-500"
+          />
+        ) : (
+          <span className="text-sm text-gray-400">あなた</span>
+        )}
+      </span>
+
+      <div className="flex-1">
+        <div className="mb-3 flex gap-2">
+          {tab('upload', '画像アップロード')}
+          {tab('generate', 'AIで生成')}
+        </div>
+
+        {mode === 'upload' ? (
+          <input
+            type="file"
+            accept="image/*"
+            data-testid="user-avatar-upload"
+            onChange={(e) => handleFile(e.target.files?.[0])}
+            className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-500 file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-emerald-600"
+          />
+        ) : (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={generateInput}
+              data-testid="user-avatar-generate-input"
+              onChange={(e) => setGenerateInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void handleGenerate()
+                }
+              }}
+              placeholder="例: 探検家風の自分"
+              className="flex-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-emerald-500 focus:outline-none"
+            />
+            <button
+              type="button"
+              data-testid="user-avatar-generate"
+              onClick={() => void handleGenerate()}
+              disabled={generateInput.trim().length === 0 || generating}
+              className="rounded-md bg-emerald-500 px-4 py-2 font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-gray-300"
+            >
+              {generating ? '生成中...' : '生成'}
+            </button>
+          </div>
+        )}
+
+        {error && (
+          <p data-testid="user-avatar-error" className="mt-2 text-xs text-rose-500">
+            {error}
+          </p>
+        )}
+        {avatarUrl && (
+          <button
+            type="button"
+            data-testid="user-avatar-remove"
+            onClick={() => onChange(null)}
+            className="mt-2 text-xs text-gray-400 hover:text-red-500"
+          >
+            アバターを削除
+          </button>
+        )}
+      </div>
     </div>
   )
 }

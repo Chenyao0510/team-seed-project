@@ -24,8 +24,9 @@
   - 論点を2軸（XY座標）上にプロットし、ノード上に文字を表示する高度な可視化の実装。 
 - [ ] **T57** `[Front]`: **音声入力対応**
   - ユーザーの発言をマイクから音声で入力できるようにする。
-- [ ] **T58** `[Front]`: **Screen 0でのユーザーアバター追加**
+- [x] **T58** `[Both]`: **Screen 0でのユーザーアバター追加**
   - 初期画面（SetupScreen）で、ユーザー自身のアバターも登録できるようにする。
+  - State スキーマに `user:{name,avatar_url}` を追加 (DECISIONS D01)。SetupScreen に画像アップロード / AI生成の2モードで登録 UI を追加。DebateStage 右端のユーザーアバターと、ユーザー介入発言の `chat_history.avatar_url` を `state.user` から解決。
 
 ### バックエンド (AI生成品質 / 状態遷移 / APIパフォーマンス)
 - [ ] **T61** `[Both]`: **強制ターンと発言ターンの状態管理分離（競合修正）**
@@ -46,7 +47,12 @@
 - [ ] **T68** `[Both]`: **APIの先行バッチ処理とオートプレイ化**
   - APIアクセスを複数ターン分まとめて裏でプールしておく仕組み。レスポンスが返ってきたら自動でスムーズに進行するようにし、ユーザー体験の遅延を防ぐ。
 
+
 ---
 
 ## 3. セッションログ
 セッション終了時にこのセクションへ追記する。
+
+- 2026-06-13: T58（Screen 0 ユーザーアバター追加）を実装。
+  - T58: Debate State に `user` を追加（DECISIONS D01 / ARCHITECTURE / fixtures / backend pydantic / frontend を同一変更で更新）。SetupScreen に「あなたのアバター」登録 UI（アップロード / AI生成トグル）を追加。backend `_avatar_for` が roster 外のユーザー発言を `user.avatar_url` で解決。
+  - backend テスト 20 passed、`make verify-all` グリーン。

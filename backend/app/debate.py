@@ -38,6 +38,7 @@ def advance_turn(state: DebateState) -> DebateState:
         characters=state.characters,
         chat_history=chat_history,
         turn_count=state.turn_count + 1,
+        user=state.user,
     )
 
 
@@ -80,4 +81,7 @@ def _avatar_for(state: DebateState, name: str) -> str:
     for character in state.characters:
         if character.name == name:
             return character.avatar_url
+    # roster 外の話者（ユーザー介入 = state.user.name）はユーザーアバターで解決する (T58)。
+    if name == state.user.name:
+        return state.user.avatar_url
     return ""

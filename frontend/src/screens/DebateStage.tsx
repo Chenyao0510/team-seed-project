@@ -34,8 +34,8 @@ const INTERVENTION_LABEL: Record<InterventionKind, string> = {
   question: '質問',
 }
 
-// T12 が `/api/add_character` を実装するまでの暫定。ユーザーアバターも同じ穴で吸収。
-const USER_AVATAR_URL = 'https://placeholder.example/user.png'
+// ユーザーがアバター未登録 (state.user.avatar_url が空) のときのフォールバック表示 (T58)。
+const USER_AVATAR_FALLBACK = 'https://placeholder.example/user.png'
 
 // ユーザー介入の発言者名（roster 外固定値。/api/next_turn が roster 外発言を
 // 「ユーザー介入」として扱い、次の AI がそれに反応する: DECISIONS D11）。
@@ -81,7 +81,7 @@ export function DebateStage({
     if (trimmed.length === 0) return
     onIntervene?.({
       ...state,
-      active_character: USER_SPEAKER,
+      active_character: state.user.name,
       current_speech: `（${INTERVENTION_LABEL[kind]}）${trimmed}`,
       status: 'speaking',
     })
@@ -178,6 +178,8 @@ export function DebateStage({
               characters={state.characters}
               isActive={isActive}
               status={state.status}
+              userName={state.user.name}
+              userAvatarUrl={state.user.avatar_url || USER_AVATAR_FALLBACK}
             />
             <div className="relative">
               <TelopBox
@@ -700,9 +702,11 @@ interface CharactersRowProps {
   characters: DebateState['characters']
   isActive: (name: string) => boolean
   status: DebateStatus
+  userName: string
+  userAvatarUrl: string
 }
 
-function CharactersRow({ characters, isActive, status }: CharactersRowProps) {
+function CharactersRow({ characters, isActive, status, userName, userAvatarUrl }: CharactersRowProps) {
   return (
     <div
       data-testid="stage-row"
@@ -743,16 +747,16 @@ function CharactersRow({ characters, isActive, status }: CharactersRowProps) {
         ))}
       </ul>
 
-      {/* User avatar is fixed at the far right (PROJECT.md spec). */}
+      {/* User avatar is fixed at the far right (PROJECT.md spec). T58: Screen 0 で登録した user.avatar_url を表示。 */}
       <div data-testid="stage-user" className="flex flex-col items-center">
         <div className="h-28 w-28 overflow-hidden rounded-full bg-slate-700 ring-2 ring-amber-300">
           <img
-            src={USER_AVATAR_URL}
+            src={userAvatarUrl}
             alt=""
             className="h-full w-full object-cover"
           />
         </div>
-        <p className="mt-3 text-sm font-semibold text-amber-200">あなた</p>
+        <p className="mt-3 text-sm font-semibold text-amber-200">{userName}</p>
       </div>
     </div>
   )

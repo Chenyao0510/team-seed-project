@@ -14,6 +14,13 @@ export interface ChatHistoryEntry {
 
 export type DebateStatus = 'thinking' | 'speaking' | 'waiting'
 
+// ステージ右端に固定表示されるユーザー自身 (T58)。`name` は介入発言の話者名
+// （既定 'あなた'）、`avatar_url` は Screen 0 で登録したアバター（未登録は空文字）。
+export interface User {
+  name: string
+  avatar_url: string
+}
+
 export interface DebateState {
   theme: string
   current_topic: string
@@ -24,6 +31,7 @@ export interface DebateState {
   characters: Character[]
   chat_history: ChatHistoryEntry[]
   turn_count: number
+  user: User
 }
 
 export interface ReflectionStance {

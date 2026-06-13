@@ -12,6 +12,7 @@ def test_debate_state_sample_has_required_fields():
         "current_points",
         "characters",
         "chat_history",
+        "user",
     }
     assert required.issubset(state.keys())
     assert isinstance(state["current_points"], list)
@@ -19,6 +20,8 @@ def test_debate_state_sample_has_required_fields():
     assert isinstance(state["chat_history"], list)
     assert all("name" in c and "avatar_url" in c for c in state["characters"])
     assert state["active_character"] in {c["name"] for c in state["characters"]}
+    # T58: ユーザー自身の表示情報（名前 + アバター）
+    assert "name" in state["user"] and "avatar_url" in state["user"]
 
 
 def test_integration_state_sample_has_required_fields():

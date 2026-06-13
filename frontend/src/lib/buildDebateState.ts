@@ -5,6 +5,9 @@ import type { SetupResult } from '../screens/SetupScreen'
 // プレースホルダー画像を返すケースも吸収できるよう、フロント側にも保持する。
 const FALLBACK_AVATAR_URL = 'https://placeholder.example/avatar.png'
 
+// ユーザー介入発言の話者名（roster 外固定値）。backend (DEFAULT_USER_NAME) と一致させる。
+export const USER_NAME = 'あなた'
+
 export function buildInitialDebateState(setup: SetupResult): DebateState {
   return {
     theme: setup.theme,
@@ -19,5 +22,7 @@ export function buildInitialDebateState(setup: SetupResult): DebateState {
     })),
     chat_history: [],
     turn_count: 0,
+    // T58: Screen 0 で登録したユーザーアバター。未登録なら空文字（DebateStage 側で placeholder 表示）。
+    user: { name: USER_NAME, avatar_url: setup.userAvatarUrl ?? '' },
   }
 }

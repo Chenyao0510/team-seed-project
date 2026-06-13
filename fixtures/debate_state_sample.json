@@ -31,5 +31,9 @@
       "avatar_url": "https://placeholder.example/socrates.png"
     }
   ],
-  "turn_count": 2
+  "turn_count": 2,
+  "user": {
+    "name": "あなた",
+    "avatar_url": "https://placeholder.example/user.png"
+  }
 }

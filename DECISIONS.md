@@ -31,13 +31,16 @@
   "chat_history": [
     {"speaker": "string", "text": "string", "avatar_url": "string"}
   ],
-  "turn_count": 0
+  "turn_count": 0,
+  "user": {"name": "string", "avatar_url": "string"}
 }
 ```
 
-`characters` はステージ上に並ぶ参加者 roster。`active_character` はこの roster のいずれかの `name` を指す。`chat_history` は過去発話の追記ログで、Setup 直後は空配列。`turn_count` は `/api/next_turn` が呼ばれるたびにバックエンドが+1する整数で、Reflection Turn (T26/T27) の発火判定に使う。
+`characters` はステージ上に並ぶ参加者 roster。`active_character` はこの roster のいずれかの `name` を指す。`chat_history` は過去発話の追記ログで、Setup 直後は空配列。`turn_count` は `/api/next_turn` が呼ばれるたびにバックエンドが+1する整数で、Reflection Turn (T26/T27) の発火判定に使う。`user` はステージ右端に固定表示されるユーザー自身の表示情報で、`name` は介入発言の話者名（既定 `あなた`）、`avatar_url` は Screen 0 で登録したアバター。
 
 **スキーマ進化メモ (T13)**: 初期は `characters` なしだったが、初期状態（誰もまだ発言していない）で参加者の roster を保持する場所がないため追加。`chat_history` から逆引きする方式は「発言前の参加者」を表現できず、ステージ描画にも不便だった。
+
+**スキーマ進化メモ (T58)**: ユーザー自身のアバターを Screen 0 で登録できるようにするため `user` を追加。従来はフロントのハードコード placeholder だったが、これだとユーザー介入発言 (`speaker = あなた`、roster 外) の `chat_history.avatar_url` をバックエンドが解決できなかった。`user` を State に持たせることで `_avatar_for` が roster 外の話者でもユーザーアバターを引けるようになる。後方互換のため pydantic 上は `user` を optional（既定 `name=あなた` / `avatar_url=""`）とし、未登録でも従来通り動作する。
 
 ### Integration State (Screen 2) スキーマ
 

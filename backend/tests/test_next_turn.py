@@ -70,3 +70,53 @@ def test_next_turn_rejects_invalid_state():
     response = client.post("/api/next_turn", json={"theme": "テーマ"})
 
     assert response.status_code == 422
+
+
+def test_next_turn_archives_user_intervention_with_user_avatar(monkeypatch):
+    """T58: roster 外のユーザー介入発言は user.avatar_url で chat_history に追記される。"""
+    state = load_debate_state()
+    user = state["user"]
+    # ユーザー介入: active_character を roster 外の user.name に、current_speech を介入文に。
+    state["active_character"] = user["name"]
+    state["current_speech"] = "（観点）コストの議論が抜けている。"
+
+    fake_output = NextTurnLLMOutput(
+        active_character="Jobs",
+        current_speech="なるほど、コストの観点は重要だ。",
+        current_points=state["current_points"],
+        current_topic=state["current_topic"],
+    )
+    monkeypatch.setattr(gemini_client, "generate_next_turn", lambda s: fake_output)
+
+    response = client.post("/api/next_turn", json=state)
+
+    assert response.status_code == 200
+    body = response.json()
+
+    archived = body["chat_history"][-1]
+    assert archived["speaker"] == user["name"]
+    assert archived["text"] == state["current_speech"]
+    assert archived["avatar_url"] == user["avatar_url"]
+    # user 情報は次ターンへ持ち越される
+    assert body["user"] == user
+
+
+def test_next_turn_defaults_user_when_omitted(monkeypatch):
+    """後方互換: user を省略した State でも 200 を返し、既定の user が補完される。"""
+    state = load_debate_state()
+    state.pop("user", None)
+
+    fake_output = NextTurnLLMOutput(
+        active_character="Jobs",
+        current_speech="続けよう。",
+        current_points=state["current_points"],
+        current_topic=state["current_topic"],
+    )
+    monkeypatch.setattr(gemini_client, "generate_next_turn", lambda s: fake_output)
+
+    response = client.post("/api/next_turn", json=state)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["user"]["name"] == "あなた"
+    assert body["user"]["avatar_url"] == ""

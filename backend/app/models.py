@@ -32,6 +32,21 @@ class ChatMessage(BaseModel):
     avatar_url: str
 
 
+# ユーザー介入発言の既定話者名（roster 外）。フロント (DebateStage) と一致させる。
+DEFAULT_USER_NAME = "あなた"
+
+
+class UserRef(BaseModel):
+    """ステージ右端に固定表示されるユーザー自身の表示情報 (T58, DECISIONS D01)。
+
+    `name` は介入発言の話者名、`avatar_url` は Screen 0 で登録したアバター。
+    後方互換のため optional 既定値を持ち、未登録 (空文字) でも従来通り動作する。
+    """
+
+    name: str = DEFAULT_USER_NAME
+    avatar_url: str = ""
+
+
 class DebateState(BaseModel):
     """Screen 1 (Debate Stage) の唯一の信頼できる State。"""
 
@@ -44,6 +59,7 @@ class DebateState(BaseModel):
     characters: list[CharacterRef] = Field(min_length=1)
     chat_history: list[ChatMessage]
     turn_count: int = Field(default=0, ge=0)
+    user: UserRef = Field(default_factory=UserRef)
 
 
 class NextTurnLLMOutput(BaseModel):

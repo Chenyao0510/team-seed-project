@@ -7,7 +7,7 @@ export interface AddCharacterResponse {
   avatar_url: string
 }
 
-import type { DebateState } from '../types/state'
+import type { DebateState, IntegrationState } from '../types/state'
 
 export async function nextTurn(state: DebateState): Promise<DebateState> {
   const response = await fetch(`${API_BASE_URL}/api/next_turn`, {
@@ -35,4 +35,18 @@ export async function addCharacter(name: string): Promise<AddCharacterResponse> 
   }
 
   return (await response.json()) as AddCharacterResponse
+}
+
+export async function summarize(state: DebateState): Promise<IntegrationState> {
+  const response = await fetch(`${API_BASE_URL}/api/summarize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state),
+  })
+
+  if (!response.ok) {
+    throw new Error(`summarize failed with status ${response.status}`)
+  }
+
+  return (await response.json()) as IntegrationState
 }

@@ -195,10 +195,52 @@
     `make verify-all` グリーン（pytest / ruff / tsc / vite build / lint 全通過）。
 
 ### Phase 3: Screen 2 (結論)
-- [ ] **T31** `[Back]`: `/api/summarize` 実装（全履歴 → Gemini JSON統合レポート生成）
+- [x] **T31** `[Back]`: `/api/summarize` 実装（全履歴 → Gemini JSON統合レポート生成）
   - 検証基準: pytest で構造化レポート (Before/After/Bento UI用Map) が返る（`integration_state_sample.json` のスキーマに準拠）
-- [ ] **T32** `[Front]`: 結論画面 UI（枠なしBento UI、staggerアニメーション、介入称賛）
+  - 実績: 2026-06-13 実装完了。詳細は `DECISIONS.md` D13。
+    - `backend/app/models.py` に `StructureCategory` / `IntegrationState` を追加
+      （D01 スキーマ準拠、`highlighted_element_index` は Optional）。
+    - `backend/app/gemini_client.py` に `generate_summary` を追加（D04 JSON Mode、
+      `responseSchema=IntegrationState`、`SUMMARIZE_TIMEOUT_SECONDS=30`）。プロンプトで
+      Before→After 構造・roster 外発言＝ユーザー介入扱い・称賛トーン
+      （CONSTRAINTS「不安・劣等感を煽らない」）を明示。
+    - `backend/app/summarize.py`（新規）に `build_integration` を実装。Gemini 失敗時は
+      決定的フォールバック（`current_points` を1カテゴリの elements にし、`chat_history`
+      末尾の roster 外発言を `user_catalyst` に採用、介入があれば末尾要素に
+      `highlighted_element_index` を振る）。
+    - `backend/app/routes.py` に `POST /api/summarize` を追加。
+    - `backend/app/config.py` に `SUMMARIZE_HISTORY_PROMPT_LIMIT=40` /
+      `SUMMARIZE_TIMEOUT_SECONDS=30` を追加。
+    - `backend/tests/test_summarize.py`（新規）で 4 テスト追加:
+      正常系（stub IntegrationState）/ Gemini 失敗時フォールバック必須フィールド検証 /
+      ユーザー介入を chat_history に追加した時の `user_catalyst` ＆ highlighted_index 反映 /
+      不正 State の 422。
+    - `make verify-all` グリーン（pytest 13 passed / lint / tsc / vite build 全通過）。
+    - ARCHITECTURE.md は既に `/api/summarize` のデータフロー・API 契約を記載済のため
+      更新不要。スキーマ Source of Truth (`fixtures/integration_state_sample.json`) も
+      pydantic と一致しており変更なし。
+- [x] **T32** `[Front]`: 結論画面 UI（枠なしBento UI、staggerアニメーション、介入称賛）
   - 検証基準: モック State (`integrationStateSample`) を Framer Motion で順次構築でき、API 接続後も同様に動く
+  - 実績: 2026-06-13 実装完了。
+    - `pnpm add framer-motion` で D08 計画通りに導入。
+    - `frontend/src/screens/IntegrationMap.tsx`（新規）を実装。
+      Before → 矢印 → After → Structure Map → User Catalyst → Praise の順で Framer Motion
+      `motion.section` の `delay` stagger で「構造が組み上がる」演出（CONSTRAINTS の
+      「介入によって流れが目に見えて変わる」体験）。`structure_map` は 1〜3 列のグリッド、
+      各カテゴリは枠なし（border 無し）の Bento セルで stagger 構築。
+      `highlighted_element_index` を amber 強調＋font-semibold で強調。`user_catalyst` を
+      amber で「触媒となった視点」として独立表示、`connective_value_praise` をフィナーレに置く。
+      アニメーション秒数は命名定数 (`STAGGER_DELAY_SECONDS` ほか) で管理。
+    - `frontend/src/api/client.ts` に `summarize(state)` を追加。
+    - `frontend/src/App.tsx` を `view: setup | debate | integration` の3状態に拡張。
+      Debate 中の「議論を整理する」ボタン押下で `summarize` を叩き、成功時に integration
+      view へ遷移。失敗時は alert で通知し debate に戻す。`?mock=integration` URL
+      ショートカットで Screen 2 を直接描画（T41 で削除予定）。
+    - `frontend/src/screens/DebateStage.tsx` の `ActionBar` 「議論を整理する」ボタンを
+      活性化（emerald で強調、`onSummarize` callback、`isSummarizing` 中はラベルを
+      「整理中...」に切替）。
+    - `make verify-all` グリーン（pytest 13 passed / lint / tsc / vite build 全通過）、
+      dev server で `/`・`/?mock=debate`・`/?mock=integration` 全て HTTP 200 を確認。
 - [ ] **T33** `[Front]`: 構造のリアルタイム可視化
   - 目的:
     - ユーザーが議論ログを追い続けなくても議論の構造変化を把握できるようにする
@@ -219,6 +261,8 @@
 ## 5. セッションログ
 セッション終了時にこのセクションへ追記する。
 
+- `2026-06-13`: T32 `[Front]` 結論画面 (IntegrationMap) UI 実装完了。Framer Motion 導入 (D08)、stagger Bento UI で Before→After / 構造マップ / Catalyst / Praise を順次構築。`make verify-all` グリーン。
+- `2026-06-13`: T31 `[Back]` `/api/summarize` 実装完了（D13）。`make verify-all` グリーン（pytest 13 passed）。
 - `2026-06-13`: T25 `[Both]` 人物追加モーダル UI 実装完了（バックは T12 `/api/add_character` を再利用、API/スキーマ変更なし）。`make verify-all` グリーン。
 - `2026-06-13`: T24 `[Back]` `/api/next_turn` 実装完了（D11）。`make verify-all` グリーン。
 - `2026-06-13`: T23 `[Front]` 介入アクション（異議・観点・質問）入力モード実装完了。`make verify-all` グリーン。

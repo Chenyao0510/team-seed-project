@@ -58,12 +58,12 @@
 - [x] **T11** `[Front]`: テーマ入力フォーム + 初期登場人物入力 UI
   - 検証基準: 入力した人物名がリスト化されること
   - 実績: `frontend/src/screens/SetupScreen.tsx` を新設。テーマ入力 + メンバー入力（Enter キー or 「追加」ボタン）+ メンバー削除 + 「議論を開始する」ボタン（テーマあり & メンバー2名以上で活性）を実装。`SetupResult` 型と `onSubmit` callback を T13 用の接続点として export。`App.tsx` から Vite テンプレを削除し SetupScreen をレンダリング。未使用テンプレ資産（`App.css`、`src/assets/*`、`public/icons.svg`）を削除。`make verify-all` グリーン、`make dev-frontend` で HTTP 200 確認。
-- [~] **T12** `[Both]`: 動的アバター生成パイプラインの実装と接続
+- [x] **T12** `[Both]`: 動的アバター生成パイプラインの実装と接続
   - Back: `/api/add_character` を実装（Gemini Search → nano banana 画像生成 → OpenCV クロマキー透過）
     - 実績: 2026-06-13 実装完了。`backend/app/{config,gemini_client,background_removal,avatar_pipeline,models,routes}.py`
       を追加し `/static/avatars/*` で配信。`make verify-all` グリーン、実APIで疎通確認済（詳細は `DECISIONS.md` D10）
   - Front: 各メンバー名で順に叩き、avatar_url を State に集約
-  - 検証基準: 初期メンバー名からGemini検索→Nanobanana生成→透過処理が走り、画像URLの配列が返却されること
+    - 実績: 2026-06-13 実装完了。初期メンバー名からGemini検索→Nanobanana生成→透過処理が走り、画像URLの配列が返却されること
 - [x] **T13** `[Front]`: Screen 0 から Screen 1 への遷移と State 引き継ぎ
   - 検証基準: 生成された画像URLを含むStateが Screen 1 に渡り、初期描画に利用されること
   - 実績:

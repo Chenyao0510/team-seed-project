@@ -24,7 +24,9 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
 
   const trimmedInput = memberInput.trim()
   const canAdd = trimmedInput.length > 0 && !members.some((m) => m.name === trimmedInput)
-  const canSubmit = theme.trim().length > 0 && members.length >= 2
+  const isAvatarLoading = loadingMembers.size > 0
+  const canSubmit =
+    theme.trim().length > 0 && members.length >= 2 && !isAvatarLoading
 
   const addMember = () => {
     if (!canAdd) return
@@ -169,9 +171,10 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
         type="button"
         onClick={submit}
         disabled={!canSubmit}
+        data-testid="start-debate"
         className="w-full rounded-md bg-emerald-600 px-4 py-3 text-lg font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-gray-300"
       >
-        議論を開始する
+        {isAvatarLoading ? 'アバター生成中...' : '議論を開始する'}
       </button>
     </div>
   )

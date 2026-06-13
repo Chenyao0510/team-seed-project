@@ -171,8 +171,10 @@
   - 強制ターン（Reflection）用の対立構造読み込みAPIを裏で先に回し、結果を確保してUIの待機時間をなくす。（優先）
 - [ ] **T66** `[Back]`: **ファシリテーターAIの導入**
   - 議論を整理・進行する専用のファシリテーターAIを組み込む（設計とプロンプト方針の検討）。
-- [ ] **T67** `[Back]`: **偉人（AI）発言の音声読み上げ (TTS)**
+- [x] **T67** `[Back]`: **偉人（AI）発言の音声読み上げ (TTS)**
   - 発言テキストに合わせて音声合成APIを叩き、偉人ボイスで読み上げる機能の追加。
+  - バックエンドに `/api/tts` を追加。ローカルの VOICEVOX (`http://127.0.0.1:50021`) にプロキシして音声を合成。
+  - フロントエンドでAI発言時 (`DebateStage.tsx` の `useEffect`) に `Audio` オブジェクトで再生するよう実装。
 - [ ] **T68** `[Both]`: **APIの先行バッチ処理とオートプレイ化**
   - APIアクセスを複数ターン分まとめて裏でプールしておく仕組み。レスポンスが返ってきたら自動でスムーズに進行するようにし、ユーザー体験の遅延を防ぐ。(優先)
 
@@ -185,7 +187,6 @@
 - 2026-06-13: T58（Screen 0 ユーザーアバター追加）を実装。
   - T58: Debate State に `user` を追加（DECISIONS D01 / ARCHITECTURE / fixtures / backend pydantic / frontend を同一変更で更新）。SetupScreen に「あなたのアバター」登録 UI（アップロード / AI生成トグル）を追加。backend `_avatar_for` が roster 外のユーザー発言を `user.avatar_url` で解決。
   - backend テスト 20 passed、`make verify-all` グリーン。
-
 - 2026-06-14: T59（Screen 2 Integration Map のレイアウト + アニメ刷新）を実装。
   - 当初 `[Front]` 単独タスクだったが、中心ノードに `theme` をそのまま置くとレイアウト破綻するため、`IntegrationState` に `central_concept: str` (max_length=12) を追加する方針を採用 → `[Both]` に再分類。
   - DECISIONS D01 に `central_concept` 追加 + D15 新規（Bento UI 中心ノード + 周辺カード + 関係線 + 介入トレース + アニメ順序）。`docs/PROJECT.md` Screen 2 章を T59 仕様で書き換え、`docs/ARCHITECTURE.md` の summarize データフローも追従。
@@ -194,3 +195,6 @@
   - 派手化: カードを中心から `rotate -720→0 + scale 0→1.18→1` で飛び出させ、中心ノードは永続点線リング回転 + 内側 breathing、線が伸びるタイミングに合わせて中心「ボン」flash、介入チェーンは ★ → 中心 → 強調線 → 強調カード → 強調 element の 5 段 sequential 発光。
   - コミット粒度: C1 docs+スキーマ宣言 / C2 backend 実装+テスト / C3 frontend 実装 / C3.5 アニメ強化 / C4 PROGRESS 更新 の 5 コミット。
   - backend テスト 20 passed、`make verify-all` グリーン。`http://localhost:5173/?mock=integration` で動作確認済み。
+- 2026-06-14: T67（偉人AI発言の音声読み上げ TTS）を実装。
+  - VOICEVOX（ポート50021）を使用。バックエンドに `/api/tts` エンドポイントを追加し、フロントエンドで `state.current_speech` 更新時に自動再生。
+  - キャラクター名（人格）を元にハッシュを取り、男女含む複数の `speaker_id` に動的割り当てを行うようにした。

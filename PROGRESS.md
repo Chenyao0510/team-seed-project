@@ -89,8 +89,15 @@
     - `make verify-all` グリーン、dev server `/` と `/?mock=debate` ともに HTTP 200 を確認
 - [ ] **T22** `[Front]`: LINE風の過去ログUI（小さな丸アイコン付きスライドインパネル）
   - 検証基準: トグルでログ表示/非表示が切り替わり、アイコンが正しく表示される
-- [ ] **T23** `[Front]`: 介入アクション（異議・観点・質問）の入力モード実装
+- [x] **T23** `[Front]`: 介入アクション（異議・観点・質問）の入力モード実装
   - 検証基準: キーボード入力が中央テロップに表示され、Stateに追記される
+  - 実績: 2026-06-13 実装完了。`DebateStage.tsx` に `ActionBar`（人物追加/異議を唱える/観点追加/質問/議論を整理する）を追加。
+    人物追加・議論を整理するは T25/T31 までの無効プレースホルダー。異議・観点・質問クリックでテロップが
+    `textarea` の入力モードに切替（見出し `あなた（{種別}）`、Cmd/Ctrl+Enter で送信・Esc でキャンセル）。
+    送信時に `active_character: 'あなた'` / `current_speech: '（{種別}）{入力文}'` / `status: 'speaking'`
+    で State を更新（`onIntervene` callback、`App.tsx` で配線）。`chat_history` への直接追記は行わず、
+    D11 の `/api/next_turn` 側アーカイブ・roster外発言への反応ロジックに委ねる設計（スキーマ変更なし）。
+    `make verify-all` グリーン、`?mock=debate` で playwright による動作確認済（入力表示・State反映・キャンセル）。
 - [x] **T24** `[Back]`: `/api/next_turn` 実装（State 受け取り → Gemini JSON構造化生成 → State 返却）
   - 検証基準: LangGraphなしで、Geminiが正しく次のキャラと発言、論点リストを更新して返す（pytest で `backend/tests/fixtures` のサンプルから検証）
   - 実績: 2026-06-13 実装完了。`backend/app/models.py` に `DebateState` 系 pydantic モデルと
@@ -164,6 +171,7 @@
 セッション終了時にこのセクションへ追記する。
 
 - `2026-06-13`: T24 `[Back]` `/api/next_turn` 実装完了（D11）。`make verify-all` グリーン。
+- `2026-06-13`: T23 `[Front]` 介入アクション（異議・観点・質問）入力モード実装完了。`make verify-all` グリーン。
 
 ## 6. ハンドオフメモ
 次セッションが最初に読むべきメモ:

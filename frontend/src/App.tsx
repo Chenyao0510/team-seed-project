@@ -27,7 +27,12 @@ function App() {
   }
 
   if (view.kind === 'debate') {
-    return <DebateStage state={view.state} />
+    return (
+      <DebateStage
+        state={view.state}
+        onIntervene={(next) => setView({ kind: 'debate', state: next })}
+      />
+    )
   }
   return <SetupScreen onSubmit={handleSetupSubmit} />
 }

@@ -8,6 +8,8 @@ interface DebateStageProps {
   onStateChange?: (newState: DebateState) => void
   onIntervene?: (next: DebateState) => void
   onAddCharacter?: (character: Character) => void
+  onSummarize?: () => void
+  isSummarizing?: boolean
 }
 
 type InterventionKind = 'objection' | 'viewpoint' | 'question'
@@ -37,6 +39,8 @@ export function DebateStage({
   onStateChange,
   onIntervene,
   onAddCharacter,
+  onSummarize,
+  isSummarizing = false,
 }: DebateStageProps) {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -155,6 +159,9 @@ export function DebateStage({
           interventionEnabled={onIntervene !== undefined}
           addCharacterEnabled={onAddCharacter !== undefined}
           onOpenAddCharacter={() => setIsAddCharOpen(true)}
+          summarizeEnabled={onSummarize !== undefined}
+          isSummarizing={isSummarizing}
+          onSummarize={() => onSummarize?.()}
         />
       </main>
 
@@ -483,6 +490,9 @@ interface ActionBarProps {
   interventionEnabled: boolean
   addCharacterEnabled: boolean
   onOpenAddCharacter: () => void
+  summarizeEnabled: boolean
+  isSummarizing: boolean
+  onSummarize: () => void
 }
 
 function ActionBar({
@@ -491,6 +501,9 @@ function ActionBar({
   interventionEnabled,
   addCharacterEnabled,
   onOpenAddCharacter,
+  summarizeEnabled,
+  isSummarizing,
+  onSummarize,
 }: ActionBarProps) {
   const interventionButtonsDisabled = !interventionEnabled || intervention !== null
 
@@ -526,11 +539,11 @@ function ActionBar({
       <button
         type="button"
         data-testid="action-summarize"
-        disabled
-        title="議論を整理する（T31 で実装予定）"
-        className="rounded-md border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-40"
+        onClick={onSummarize}
+        disabled={!summarizeEnabled || intervention !== null || isSummarizing}
+        className="rounded-md border border-emerald-500 bg-emerald-600/10 px-4 py-2 text-sm font-semibold text-emerald-200 hover:border-emerald-300 hover:bg-emerald-500/20 hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        議論を整理する
+        {isSummarizing ? '整理中...' : '議論を整理する'}
       </button>
     </nav>
   )

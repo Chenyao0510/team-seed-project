@@ -1,9 +1,11 @@
 // Canonical sample State JSON. Source of truth lives at /fixtures at the repo root,
 // shared with backend pytest. Use these to render screens without a running backend.
 //
-// Schema is defined in DECISIONS.md D01.
+// Schema is defined in DECISIONS.md D01 and frontend/src/types/state.ts.
 
-import debateStateSample from '../../../fixtures/debate_state_sample.json';
-import integrationStateSample from '../../../fixtures/integration_state_sample.json';
+import debateRaw from '../../../fixtures/debate_state_sample.json'
+import integrationRaw from '../../../fixtures/integration_state_sample.json'
+import type { DebateState, IntegrationState } from '../types/state'
 
-export { debateStateSample, integrationStateSample };
+export const debateStateSample = debateRaw as DebateState
+export const integrationStateSample = integrationRaw as IntegrationState

@@ -37,3 +37,7 @@ IMAGE_GENERATION_RETRIES = 2
 
 # プレースホルダーアバター
 PLACEHOLDER_SIZE_PX = 256
+
+# 次ターン生成 (T24)
+CHAT_HISTORY_PROMPT_LIMIT = 12  # プロンプトに渡す直近 chat_history 件数
+NEXT_TURN_TIMEOUT_SECONDS = 20

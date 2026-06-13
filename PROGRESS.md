@@ -134,12 +134,14 @@
     - ユーザーへ介入を強制しない
     - AIから次の視点を誘導しない
     - 現在の議論構造を可視化し、人間が介入するか継続するかを選択できる状態を作る
+    - 現状の内容をsummaryする
   - 実装:
     - 一定ターン数（例: 3ターン）ごとに Reflection Panel を表示
     - 表示内容は以下のみ
       - 現在の論点一覧
       - 現在フォーカス中の論点
       - 現在の問い
+      - 現在の論理の要約をブロックごとに、論点のブロックの中で立場ごとにキャラクタのアイコンを入れる
     - AIによる「足りない視点」「追加すべき人物」の提案は禁止
     - ユーザーが以下を選択可能
       - 続きを見る
@@ -150,6 +152,24 @@
   - 検証基準:
     - Reflection Panel表示中も入力を強制されない
     - 「続きを見る」で討論が継続できる
+  - 実績: 2026-06-13 実装完了。`DebateStage.tsx` に `ReflectionPanel`（オーバーレイ）を追加。
+    `/api/next_turn` 成功ごとにフロント側でローカルに `turnCount` を集計（ユーザー介入はカウント
+    しない）し、`REFLECTION_INTERVAL`（=3）ターンごとに表示。表示内容は「現在の問い」=`theme`、
+    「フォーカス中の論点」=`current_topic`、「論点一覧」=`current_points`、「参加者」=
+    `characters` のアイコン一列（既存 `DebateState` の範囲、スキーマ変更なし）。
+    アクションは「続きを見る」（パネルを閉じて `nextTurn` を継続）、「観点追加」「異議を唱える」
+    （既存 T23 の介入入力モードへ遷移）、「人物追加」「議論を整理する」（T25/T31 までの無効
+    プレースホルダ）。`make verify-all` グリーン（playwright 未使用、dev server `/?mock=debate`
+    で HTTP 200 を確認）。
+    - **退避（未実装・後続タスク）**:
+      - facilitator（参加者外AI）の一言は**静的な中立コピー**（視点提案なし）。後ほど
+        facilitator を動的化（参加者外AIによる要約一言の生成）する。バック依存のため新規
+        エンドポイント or `/api/next_turn` 拡張で対応する後続タスクが必要。
+      - 「論点 × 立場 × キャラクタアイコン」の構造化要約は現スキーマに無いため未実装。
+        現在は参加者ロスターのアイコンを一列表示するのみ（立場分けなし）。reflection 用の
+        構造化要約をバックで生成する後続タスクで対応する。
+      - `turnCount` はフロントのローカル state で集計（T27 の backend `turn_count` 未導入の
+        ため）。T27 実装時に backend から返る `turn_count` ベースの判定へ差し替えること。
 - [ ] **T27** `[Back]`: Turn Counter の導入
   - 目的:
     - Semanticな「膠着状態判定」を行わず、決定論的にReflection Turnを発火させる
@@ -189,6 +209,7 @@
 - `2026-06-13`: T25 `[Both]` 人物追加モーダル UI 実装完了（バックは T12 `/api/add_character` を再利用、API/スキーマ変更なし）。`make verify-all` グリーン。
 - `2026-06-13`: T24 `[Back]` `/api/next_turn` 実装完了（D11）。`make verify-all` グリーン。
 - `2026-06-13`: T23 `[Front]` 介入アクション（異議・観点・質問）入力モード実装完了。`make verify-all` グリーン。
+- `2026-06-13`: T26 `[Front]` Reflection Turn UI 実装完了。`turn_count` はフロントローカル集計の暫定実装、facilitator は静的コピー。`make verify-all` グリーン。
 
 ## 6. ハンドオフメモ
 次セッションが最初に読むべきメモ:
@@ -198,3 +219,4 @@
 - フロント・バック並行作業のため、`fixtures/` の State JSON をスキーマ Source of Truth として扱う。スキーマ変更時は `DECISIONS.md` D01 → `docs/ARCHITECTURE.md` → `fixtures/*.json` を同一 PR で揃える。
 - T13 で Debate State に `characters` フィールドを追加した。フロント `buildInitialDebateState()` は現状プレースホルダー URL を入れている。T12 でここを `/api/add_character` の戻り値に置き換える。
 - フロント型は `frontend/src/types/state.ts`、Debate Stage 本体は T21 で `frontend/src/screens/DebateStage.tsx` を差し替える形で実装する（props 契約: `state: DebateState`）。
+- T26 で Reflection Panel を実装した。`turnCount` はフロントのローカル state（`DebateStage.tsx`）で集計しており、T27 で backend が `turn_count` を `DebateState` に追加したら、ローカル集計をやめて backend 由来の値に差し替えること。また facilitator の一言は静的コピーのプレースホルダ。動的化（参加者外AIの要約生成）とブロック単位の「論点×立場×キャラアイコン」構造化要約は、バック側のスキーマ拡張/新エンドポイントが必要な後続タスクとして残っている。

@@ -24,6 +24,10 @@ STATIC_DIR = _BACKEND_DIR / "static"
 AVATARS_DIR = STATIC_DIR / "avatars"
 AVATARS_URL_PREFIX = "/static/avatars"
 
+# 事前生成キャラクターテンプレート (T5A / D16)
+TEMPLATES_DIR = STATIC_DIR / "templates"
+TEMPLATES_URL_PREFIX = "/static/templates"
+
 # クロマキー背景色（明るい緑）と HSV 許容範囲
 CHROMA_KEY_BGR = (0, 255, 0)
 CHROMA_HSV_LOWER = (35, 80, 80)

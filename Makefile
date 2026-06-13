@@ -1,4 +1,4 @@
-.PHONY: init lint check-types test build verify-all dev-frontend dev-backend clean help
+.PHONY: init lint check-types test build verify-all dev-frontend dev-backend clean help seed-templates
 
 PYTHON       ?= python3
 PNPM         ?= pnpm
@@ -25,6 +25,7 @@ help:
 	@echo "  verify-all    lint + check-types + test + build"
 	@echo "  dev-frontend  vite dev server on :5173"
 	@echo "  dev-backend   uvicorn on :8000"
+	@echo "  seed-templates  generate character template PNGs (T5A, one-shot)"
 	@echo "  clean         remove build/cache artifacts"
 
 $(BACKEND_VENV):
@@ -81,6 +82,15 @@ dev-backend:
 
 verify-all: lint check-types test build
 	@echo "==> verify-all OK"
+
+# T5A: 事前生成キャラクターテンプレートのワンショット生成。
+# GEMINI_API_KEY が必要。既存 PNG をスキップするには ARGS=--skip-existing
+seed-templates:
+	@if [ -x $(BACKEND_PY) ]; then \
+	  cd backend && $(NIXLD_ENV) ../$(BACKEND_VENV)/bin/python scripts/seed_templates.py $(ARGS); \
+	else \
+	  echo "(backend venv missing; run 'make init')"; exit 1; \
+	fi
 
 clean:
 	rm -rf frontend/dist frontend/node_modules/.vite

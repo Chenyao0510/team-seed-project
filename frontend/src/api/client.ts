@@ -7,7 +7,22 @@ export interface AddCharacterResponse {
   avatar_url: string
 }
 
+// 事前生成キャラクターテンプレート (T5A / D16)。
+export interface CharacterTemplate {
+  slug: string
+  name: string
+  avatar_url: string
+}
+
 import type { DebateState, IntegrationState, ReflectionSummary } from '../types/state'
+
+export async function getCharacterTemplates(): Promise<CharacterTemplate[]> {
+  const response = await fetch(`${API_BASE_URL}/api/character_templates`)
+  if (!response.ok) {
+    throw new Error(`character_templates failed with status ${response.status}`)
+  }
+  return (await response.json()) as CharacterTemplate[]
+}
 
 export async function nextTurn(state: DebateState): Promise<DebateState> {
   const response = await fetch(`${API_BASE_URL}/api/next_turn`, {

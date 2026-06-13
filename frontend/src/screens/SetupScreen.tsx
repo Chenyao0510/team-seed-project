@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { addCharacter } from '../api/client'
+import { addCharacter, type CharacterTemplate } from '../api/client'
+import { CharacterTemplatePanel } from '../components/setup/CharacterTemplatePanel'
 
 export interface SetupMember {
   name: string
@@ -63,13 +64,25 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
     setMembers((prev) => prev.filter((m) => m.name !== name))
   }
 
+  // T5A: 事前生成テンプレートからの追加。動的アバター生成パイプライン
+  // (`addCharacter`) を呼ばずに、解決済み avatar_url ごと members に push する。
+  const addMemberByTemplate = (template: CharacterTemplate) => {
+    if (members.some((m) => m.name === template.name)) return
+    setMembers((prev) => [
+      ...prev,
+      { name: template.name, avatarUrl: template.avatar_url },
+    ])
+  }
+
   const submit = () => {
     if (!canSubmit) return
     onSubmit?.({ theme: theme.trim(), members, userAvatarUrl })
   }
 
+  const addedNames = new Set(members.map((m) => m.name))
+
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12">
+    <div className="mx-auto max-w-6xl px-6 py-12">
       <header className="mb-10">
         <h1 className="mb-2 text-4xl font-bold tracking-tight text-gray-900">
           議論をセットアップ
@@ -79,6 +92,8 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
         </p>
       </header>
 
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div>
       <section className="mb-8">
         <label htmlFor="theme" className="mb-2 block text-sm font-semibold text-gray-700">
           議論のテーマ
@@ -193,6 +208,13 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
       >
         {isAvatarLoading ? 'アバター生成中...' : '議論を開始する'}
       </button>
+        </div>
+
+        <CharacterTemplatePanel
+          addedNames={addedNames}
+          onPick={addMemberByTemplate}
+        />
+      </div>
     </div>
   )
 }

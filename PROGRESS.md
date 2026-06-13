@@ -241,7 +241,7 @@
       「整理中...」に切替）。
     - `make verify-all` グリーン（pytest 13 passed / lint / tsc / vite build 全通過）、
       dev server で `/`・`/?mock=debate`・`/?mock=integration` 全て HTTP 200 を確認。
-- [ ] **T33** `[Front]`: 構造のリアルタイム可視化
+- [x] **T33** `[Front]`: 構造のリアルタイム可視化
   - 目的:
     - ユーザーが議論ログを追い続けなくても議論の構造変化を把握できるようにする
   - 実装:
@@ -251,6 +251,23 @@
   - 検証基準:
     - 議論の進行に応じて論点構造が更新される
     - 長いログを読まなくても現在地が把握できる
+  - 実績: 2026-06-13 実装完了（A案: LLM 一発生成 + フロント差分アニメ）。スキーマ変更なし。
+    - **認知負荷を下げる「1ターン1変更」原則**:
+      `backend/app/gemini_client.py` の `_build_next_turn_prompt` で current_points の
+      更新ルールを明示: 追加 = 最大1個 / 削除・差し替え = 最大1個 / 変更しない論点は
+      前ターンの文字列をそのまま再利用（表記揺れは差分扱いになるので禁止）/ 順序は維持。
+    - **新規論点の強調**:
+      `motion.li` に `layout` を付け、`isNew` のときだけ `initial` で emerald 35% 背景 +
+      glow 32px + scale 0.7 + x-24 をセット → `animate` で背景・glow を 2.8 秒かけて
+      減衰、scale は spring (stiffness 320 / damping 14) で「ポンッ」と弾む。
+      右側に `NEW` バッジ (`motion.span`) を 3.5 秒だけ表示してフェードアウト。
+    - **削除の見せ方**:
+      `useIsPresent()` で「exit 中かどうか」を判定し、対象 li の文字を rose の
+      line-through に切替。`exit` を 1.1 秒（従来 0.4 秒）に伸ばして「消されている
+      ところを見せる」演出を確保した上で、右へスライドアウト。
+    - アニメーション秒数・背景色・box-shadow は全て命名定数化（マジックナンバー禁止）。
+    - `make verify-all` グリーン（pytest 13 passed / lint / tsc / vite build 全通過）、
+      `dev-frontend` の `/?mock=debate` で HTTP 200。
 
 ### Phase 4: E2E 統合
 - [ ] **T41** `[Both]`: Screen 0 → 1 → 2 のエンドツーエンドシナリオテスト
@@ -261,6 +278,7 @@
 ## 5. セッションログ
 セッション終了時にこのセクションへ追記する。
 
+- `2026-06-13`: T33 `[Front]` 構造のリアルタイム可視化（A案: 既存 current_points を AnimatePresence で差分アニメ、新規論点を emerald glow で強調）。スキーマ変更なし。`make verify-all` グリーン。
 - `2026-06-13`: T32 `[Front]` 結論画面 (IntegrationMap) UI 実装完了。Framer Motion 導入 (D08)、stagger Bento UI で Before→After / 構造マップ / Catalyst / Praise を順次構築。`make verify-all` グリーン。
 - `2026-06-13`: T31 `[Back]` `/api/summarize` 実装完了（D13）。`make verify-all` グリーン（pytest 13 passed）。
 - `2026-06-13`: T25 `[Both]` 人物追加モーダル UI 実装完了（バックは T12 `/api/add_character` を再利用、API/スキーマ変更なし）。`make verify-all` グリーン。

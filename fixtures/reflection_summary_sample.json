@@ -1,0 +1,20 @@
+{
+  "facilitator_comment": "大学の価値について、中退経験を根拠にする立場と、無知の知を自覚する場としての価値を説く立場が示されました。",
+  "blocks": [
+    {
+      "topic": "専門知識の価値/実践と内省",
+      "stances": [
+        {
+          "label": "実践重視派",
+          "summary": "大学は不要、経験こそが力",
+          "characters": ["Jobs"]
+        },
+        {
+          "label": "自己省察重視派",
+          "summary": "無知を知る出会いの場が価値",
+          "characters": ["Socrates"]
+        }
+      ]
+    }
+  ]
+}

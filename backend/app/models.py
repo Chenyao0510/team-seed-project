@@ -2,6 +2,7 @@
 
 - AddCharacter*: `/api/add_character`（T12）
 - Debate*: `/api/next_turn`（T24）。スキーマは DECISIONS.md D01 が Source of Truth。
+- Reflection*: `/api/reflection`（T26 残作業）。スキーマは DECISIONS.md D13 参照。
 """
 
 from typing import Literal
@@ -54,3 +55,29 @@ class NextTurnLLMOutput(BaseModel):
     current_speech: str
     current_points: list[str]
     current_topic: str
+
+
+class ReflectionStance(BaseModel):
+    """論点に対する1つの立場と、その立場を取るキャラクタ。"""
+
+    label: str
+    summary: str
+    characters: list[str]
+
+
+class ReflectionBlock(BaseModel):
+    """論点ごとの立場ブロック。"""
+
+    topic: str
+    stances: list[ReflectionStance]
+
+
+class ReflectionSummary(BaseModel):
+    """`/api/reflection` のレスポンス（Gemini responseSchema にも使う）。
+
+    `facilitator_comment` は中立の要約一言で、足りない視点・追加すべき人物の
+    提案は含めない（PROGRESS.md T26 の制約）。
+    """
+
+    facilitator_comment: str
+    blocks: list[ReflectionBlock]

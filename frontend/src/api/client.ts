@@ -7,7 +7,7 @@ export interface AddCharacterResponse {
   avatar_url: string
 }
 
-import type { DebateState } from '../types/state'
+import type { DebateState, ReflectionSummary } from '../types/state'
 
 export async function nextTurn(state: DebateState): Promise<DebateState> {
   const response = await fetch(`${API_BASE_URL}/api/next_turn`, {
@@ -21,6 +21,20 @@ export async function nextTurn(state: DebateState): Promise<DebateState> {
   }
 
   return (await response.json()) as DebateState
+}
+
+export async function reflection(state: DebateState): Promise<ReflectionSummary> {
+  const response = await fetch(`${API_BASE_URL}/api/reflection`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state),
+  })
+
+  if (!response.ok) {
+    throw new Error(`reflection failed with status ${response.status}`)
+  }
+
+  return (await response.json()) as ReflectionSummary
 }
 
 export async function addCharacter(name: string): Promise<AddCharacterResponse> {

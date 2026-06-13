@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
-import type { Character, DebateState, DebateStatus, ChatHistoryEntry } from '../types/state'
-import { addCharacter, nextTurn } from '../api/client'
+import { useState, useEffect, Fragment } from 'react'
+import type { Character, DebateState, DebateStatus, ChatHistoryEntry, ReflectionSummary } from '../types/state'
+import { addCharacter, nextTurn, reflection } from '../api/client'
 
 interface DebateStageProps {
   state: DebateState
@@ -42,6 +42,8 @@ export function DebateStage({ state, onOpenHistory, onStateChange, onIntervene, 
   const isActive = (name: string) => state.active_character === name
   const [intervention, setIntervention] = useState<InterventionKind | null>(null)
   const [showReflection, setShowReflection] = useState(false)
+  const [reflectionSummary, setReflectionSummary] = useState<ReflectionSummary | null>(null)
+  const [reflectionLoading, setReflectionLoading] = useState(false)
 
   const existingNames = state.characters.map((c) => c.name)
 
@@ -78,10 +80,17 @@ export function DebateStage({ state, onOpenHistory, onStateChange, onIntervene, 
   }
 
   // AI 進行ターンが完了した際の共通処理。backend が返す turn_count が
-  // REFLECTION_INTERVAL の倍数になったら Reflection Panel を表示する。
+  // REFLECTION_INTERVAL の倍数になったら Reflection Panel を表示し、
+  // facilitator 一言 + 論点×立場×キャラの構造化要約を /api/reflection から取得する。
   const maybeShowReflection = (newState: DebateState) => {
     if (newState.turn_count % REFLECTION_INTERVAL === 0) {
       setShowReflection(true)
+      setReflectionSummary(null)
+      setReflectionLoading(true)
+      reflection(newState)
+        .then((summary) => setReflectionSummary(summary))
+        .catch((err) => console.error(err))
+        .finally(() => setReflectionLoading(false))
     }
   }
 
@@ -228,13 +237,12 @@ export function DebateStage({ state, onOpenHistory, onStateChange, onIntervene, 
       {/* Reflection Turn (T26): 一定ターンごとに討論を一時停止し、ユーザーに主導権を返す */}
       {showReflection && (
         <ReflectionPanel
-          theme={state.theme}
           currentTopic={state.current_topic}
-          points={state.current_points}
           characters={state.characters}
+          summary={reflectionSummary}
+          loading={reflectionLoading}
           onContinue={handleReflectionContinue}
-          onAddViewpoint={() => handleReflectionIntervention('viewpoint')}
-          onObject={() => handleReflectionIntervention('objection')}
+          onSelectIntervention={handleReflectionIntervention}
         />
       )}
     </div>
@@ -242,130 +250,198 @@ export function DebateStage({ state, onOpenHistory, onStateChange, onIntervene, 
 }
 
 interface ReflectionPanelProps {
-  theme: string
   currentTopic: string
-  points: string[]
   characters: DebateState['characters']
+  summary: ReflectionSummary | null
+  loading: boolean
   onContinue: () => void
-  onAddViewpoint: () => void
-  onObject: () => void
+  onSelectIntervention: (kind: InterventionKind) => void
 }
 
-// Reflection Panel (T26): AIによる「足りない視点」「追加すべき人物」の提案は禁止。
-// 現在の問い・論点構造のみを示し、ユーザーが次の行動を選ぶための余白を作る。
+const REFLECTION_INTERVENTION: { kind: InterventionKind; label: string; testId: string }[] = [
+  { kind: 'objection', label: '異議を唱える', testId: 'reflection-objection' },
+  { kind: 'viewpoint', label: '観点追加', testId: 'reflection-add-viewpoint' },
+  { kind: 'question', label: '質問', testId: 'reflection-question' },
+]
+
+// Reflection Panel (T26/T26残作業): AIによる「足りない視点」「追加すべき人物」の提案は禁止。
+// 認知負荷を最小化するため、現在の論点と「対立構造マップ」(VS表示) のみを示し、
+// ユーザーは「見守る」か「発言する」かのどちらかを選ぶだけでよい。
 function ReflectionPanel({
-  theme,
   currentTopic,
-  points,
   characters,
+  summary,
+  loading,
   onContinue,
-  onAddViewpoint,
-  onObject,
+  onSelectIntervention,
 }: ReflectionPanelProps) {
+  // 論点は直近2件のみ表示する（古い論点は折り返しなしで切り捨てる）。
+  const blocks = (summary?.blocks ?? []).slice(-2)
+  const [showInterventionChoices, setShowInterventionChoices] = useState(false)
+
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <section
         data-testid="reflection-panel"
-        className="mx-4 w-full max-w-2xl rounded-2xl border-2 border-emerald-400/60 bg-slate-800 p-8 shadow-2xl"
+        className="mx-4 w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border-2 border-emerald-400/60 bg-slate-800 p-8 shadow-2xl"
       >
         <p className="mb-1 text-xs uppercase tracking-wider text-emerald-300">
           Reflection Turn
         </p>
-        <h2 className="mb-4 text-sm leading-relaxed text-slate-200">
-          ここまでの議論です。続けますか、それともあなたの視点を加えますか？
+        <h2
+          data-testid="reflection-topic"
+          className="mb-6 text-xl font-bold text-slate-100"
+          title={currentTopic}
+        >
+          現在の論点：{currentTopic || '未設定'}
         </h2>
 
-        <div className="mb-4 space-y-1">
-          <p className="text-xs text-slate-400">現在の問い</p>
-          <p className="text-base font-semibold text-slate-100" title={theme}>
-            {theme}
+        {loading ? (
+          <p className="mb-6 text-center text-sm text-slate-400" data-testid="reflection-loading">
+            対立構造を読み込み中...
           </p>
-        </div>
-
-        <div className="mb-4 space-y-1">
-          <p className="text-xs text-slate-400">フォーカス中の論点</p>
-          <p className="text-sm text-slate-100" title={currentTopic}>
-            {currentTopic || '未設定'}
-          </p>
-        </div>
-
-        <div className="mb-4 space-y-2">
-          <p className="text-xs text-slate-400">論点一覧</p>
-          {points.length === 0 ? (
-            <p className="text-sm text-slate-500">まだ論点が出ていません</p>
-          ) : (
-            <ul className="flex flex-wrap gap-2">
-              {points.map((p) => (
-                <li
-                  key={p}
-                  className="rounded bg-slate-700/60 px-3 py-1 text-sm text-slate-100"
-                >
-                  {p}
+        ) : blocks.length > 0 ? (
+          <div className="mb-6 space-y-4" data-testid="reflection-blocks">
+            {blocks.map((block) => (
+              <div key={block.topic} data-testid="reflection-block">
+                {blocks.length > 1 && (
+                  <p className="mb-2 text-center text-xs text-slate-400">{block.topic}</p>
+                )}
+                <VsRow stances={block.stances} characters={characters} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mb-6 space-y-2" data-testid="reflection-participants">
+            <p className="text-center text-xs text-slate-400">参加者</p>
+            <ul className="flex justify-center gap-3">
+              {characters.map((c) => (
+                <li key={c.name} className="flex flex-col items-center">
+                  <div className="h-12 w-12 overflow-hidden rounded-full bg-slate-700 ring-2 ring-slate-600">
+                    <img src={c.avatar_url} alt="" className="h-full w-full object-cover" />
+                  </div>
+                  <span className="mt-1 text-xs text-slate-300">{c.name}</span>
                 </li>
               ))}
             </ul>
-          )}
-        </div>
-
-        <div className="mb-6 space-y-2">
-          <p className="text-xs text-slate-400">参加者</p>
-          <ul className="flex gap-3">
-            {characters.map((c) => (
-              <li key={c.name} className="flex flex-col items-center">
-                <div className="h-12 w-12 overflow-hidden rounded-full bg-slate-700 ring-2 ring-slate-600">
-                  <img src={c.avatar_url} alt="" className="h-full w-full object-cover" />
-                </div>
-                <span className="mt-1 text-xs text-slate-300">{c.name}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center justify-center gap-3 border-t border-slate-700 pt-4">
-          <button
-            type="button"
-            data-testid="reflection-continue"
-            onClick={onContinue}
-            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500"
-          >
-            続きを見る
-          </button>
-          <button
-            type="button"
-            data-testid="reflection-add-character"
-            disabled
-            title="人物追加（T25 で実装予定）"
-            className="rounded-md border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-40"
-          >
-            人物追加
-          </button>
-          <button
-            type="button"
-            data-testid="reflection-add-viewpoint"
-            onClick={onAddViewpoint}
-            className="rounded-md border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
-          >
-            観点追加
-          </button>
-          <button
-            type="button"
-            data-testid="reflection-objection"
-            onClick={onObject}
-            className="rounded-md border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
-          >
-            異議を唱える
-          </button>
-          <button
-            type="button"
-            data-testid="reflection-summarize"
-            disabled
-            title="議論を整理する（T31 で実装予定）"
-            className="rounded-md border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-40"
-          >
-            議論を整理する
-          </button>
+          {showInterventionChoices ? (
+            REFLECTION_INTERVENTION.map(({ kind, label, testId }) => (
+              <button
+                key={kind}
+                type="button"
+                data-testid={testId}
+                onClick={() => onSelectIntervention(kind)}
+                className="rounded-md border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
+              >
+                {label}
+              </button>
+            ))
+          ) : (
+            <>
+              <button
+                type="button"
+                data-testid="reflection-intervene"
+                onClick={() => setShowInterventionChoices(true)}
+                className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500"
+              >
+                発言する（異議/観点/質問）
+              </button>
+              <button
+                type="button"
+                data-testid="reflection-continue"
+                onClick={onContinue}
+                className="rounded-md border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
+              >
+                このまま議論を見守る（次へ）
+              </button>
+            </>
+          )}
         </div>
       </section>
+    </div>
+  )
+}
+
+interface VsRowProps {
+  stances: ReflectionSummary['blocks'][number]['stances']
+  characters: DebateState['characters']
+}
+
+// 対立構造マップ。
+// 立場が2つの場合: [アイコンA] ラベル(立場)  VS  ラベル(立場) [アイコンB] の左右ミラー表示。
+// 立場が3つ以上の場合: 同じ立場の人物をひとつのブロックにまとめ、ブロックを縦に積んで
+// 間に "VS" の区切りを挟む（3人目・4人目以降の立場も同じ形式でブロックを追加するだけで
+// 拡張できる）。
+function VsRow({ stances, characters }: VsRowProps) {
+  if (stances.length === 2) {
+    return (
+      <div className="flex items-center gap-3">
+        <StanceChip stance={stances[0]} characters={characters} />
+        <span className="shrink-0 text-xs font-bold text-slate-500">VS</span>
+        <StanceChip stance={stances[1]} characters={characters} reverse />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {stances.map((stance, i) => (
+        <Fragment key={stance.label}>
+          <div className="rounded-lg border border-slate-700 bg-slate-900/40 p-3">
+            <StanceChip stance={stance} characters={characters} />
+          </div>
+          {i < stances.length - 1 && (
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+              <span className="h-px flex-1 bg-slate-700" />
+              VS
+              <span className="h-px flex-1 bg-slate-700" />
+            </div>
+          )}
+        </Fragment>
+      ))}
+    </div>
+  )
+}
+
+interface StanceChipProps {
+  stance: ReflectionSummary['blocks'][number]['stances'][number]
+  characters: DebateState['characters']
+  reverse?: boolean
+}
+
+// 立場ごとのチップ。label を太字で強調し、summary はその下に小さめのグレー文字で常時表示する。
+function StanceChip({ stance, characters, reverse }: StanceChipProps) {
+  return (
+    <div
+      data-testid="reflection-stance"
+      className={`flex flex-1 items-center gap-2 ${reverse ? 'flex-row-reverse text-right' : ''}`}
+    >
+      {stance.characters.length > 0 && (
+        <ul className={`flex shrink-0 flex-col -space-y-2 ${reverse ? 'items-end' : 'items-start'}`}>
+          {stance.characters.map((name) => {
+            const character = characters.find((c) => c.name === name)
+            return (
+              <li
+                key={name}
+                title={name}
+                className="h-10 w-10 overflow-hidden rounded-full bg-slate-700 ring-2 ring-slate-900"
+              >
+                {character && (
+                  <img src={character.avatar_url} alt={name} className="h-full w-full object-cover" />
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      <div className="flex flex-col">
+        <span className="text-sm font-bold text-slate-100">{stance.label}</span>
+        <span className="text-sm text-gray-400">{stance.summary}</span>
+      </div>
     </div>
   )
 }

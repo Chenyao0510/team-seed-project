@@ -165,12 +165,37 @@
       - facilitator（参加者外AI）の一言は**静的な中立コピー**（視点提案なし）。後ほど
         facilitator を動的化（参加者外AIによる要約一言の生成）する。バック依存のため新規
         エンドポイント or `/api/next_turn` 拡張で対応する後続タスクが必要。
+        → **2026-06-13 追加セッションで対応済み**（下記）。
       - 「論点 × 立場 × キャラクタアイコン」の構造化要約は現スキーマに無いため未実装。
         現在は参加者ロスターのアイコンを一列表示するのみ（立場分けなし）。reflection 用の
         構造化要約をバックで生成する後続タスクで対応する。
+        → **2026-06-13 追加セッションで対応済み**（下記）。
       - `turnCount` はフロントのローカル state で集計（T27 の backend `turn_count` 未導入の
         ため）。T27 実装時に backend から返る `turn_count` ベースの判定へ差し替えること。
         → **T27 で対応済み**（下記）。
+    - **追加実績（2026-06-13 / D13）**: 上記2点の退避項目を解消。新規
+      `POST /api/reflection`（`backend/app/{models,gemini_client,reflection,routes,config}.py`）
+      が Debate State から `ReflectionSummary`（`facilitator_comment` + 論点ごとの
+      `blocks[].stances[].label/summary/characters`）を Gemini JSON Mode (D04) で生成し、
+      Gemini 失敗時・roster外名は決定論的フォールバック/フィルタで UI を壊さない。
+      `DebateStage.tsx` の `maybeShowReflection` が turn_count 発火時に `/api/reflection`
+      を呼び、`ReflectionPanel` は facilitator 一言を表示し、`blocks` を論点×立場×
+      キャラアイコンで描画（`blocks` 空時は従来の論点一覧+参加者一覧にフォールバック）。
+      パネルの「人物追加」ボタンも活性化し T25 の `AddCharacterModal` を再利用。
+      `fixtures/reflection_summary_sample.json` 新規、`backend/tests/test_reflection.py`
+      (3 tests) 追加。`make verify-all` グリーン（pytest 13 passed）。
+    - **追加実績（2026-06-13 / 認知負荷極小化の引き算UI改修）**: `ReflectionSummary`
+      スキーマは変更せず、`ReflectionPanel` の表示をフロント側のみで再設計。
+      `facilitator_comment`・「現在の問い」(`theme`)・「論点一覧」(`current_points`)・
+      各 `stance.summary` の文章表示を削除（`stance.summary` は hover 時の `title`
+      属性としてのみ保持）。最上部に「現在の論点：{current_topic}」を大きく表示し、
+      `summary.blocks` を `VsRow`/`StanceChip` による対立構造マップ（`[アイコン] ラベル
+      VS ラベル [アイコン]`、2立場時は左右ミラー表示）として描画。アクションは
+      「このまま議論を見守る（次へ）」「介入する（異議/観点/質問）」の2button に縮小し、
+      「介入する」選択後に異議/観点/質問の3択を表示する2段階構成。「人物追加」
+      「議論を整理する」はパネルから削除（メインの `ActionBar` から操作可能）。
+      モーダルは背景クリックで閉じない仕様を維持（トグル式にしない）。
+      `make verify-all` グリーン（pytest 13 passed / lint / tsc / build 全通過）。
 - [x] **T27** `[Back]`: Turn Counter の導入
   - 目的:
     - Semanticな「膠着状態判定」を行わず、決定論的にReflection Turnを発火させる
@@ -224,6 +249,11 @@
 - `2026-06-13`: T23 `[Front]` 介入アクション（異議・観点・質問）入力モード実装完了。`make verify-all` グリーン。
 - `2026-06-13`: T26 `[Front]` Reflection Turn UI 実装完了。`turn_count` はフロントローカル集計の暫定実装、facilitator は静的コピー。`make verify-all` グリーン。
 - `2026-06-13`: T27 `[Back]` Turn Counter 導入（D12）。`DebateState.turn_count` を追加し `/api/next_turn` で+1。T26 の暫定実装（ローカル `turnCount` 集計）を backend 由来の `turn_count` 判定に差し替え。`make verify-all` グリーン。
+- `2026-06-13`: T26 `[Both]` 残作業（D13）。新規 `POST /api/reflection` で動的 facilitator 一言 + 論点×立場×キャラアイコンの構造化要約を生成。`DebateStage.tsx` の Reflection Panel を `blocks` 駆動に改修し、人物追加ボタンを活性化。`make verify-all` グリーン（pytest 13 passed）。
+- `2026-06-13`: T26 `[Front]` Reflection Panel の認知負荷極小化（引き算UI改修）。`ReflectionSummary` スキーマは不変、フロント描画のみ変更。facilitator一言・現在の問い・論点一覧・各stance summaryの文章表示を削除（summaryはhoverのtitleのみ）。最上部に「現在の論点」を大きく表示し、`summary.blocks` を対立構造マップ（VS表示）で描画。アクションを「見守る（次へ）」/「介入する（異議/観点/質問）」の2button構成に縮小（人物追加・議論を整理するはパネルから削除）。モーダルは背景クリックで閉じない仕様を維持。`make verify-all` グリーン。
+- `2026-06-13`: T26 `[Both]` Reflection Panel 微調整。(1) `_build_next_turn_prompt`（`gemini_client.py`）の `current_topic` 指示を「名詞句を『/』で区切った10〜20文字」に変更し、より端的な論点表現を促す。(2) `StanceChip` を改修し、`stance.summary` を hover 専用 (`title`) から、`label`（太字）の下に常時表示する `text-sm text-gray-400` の補足テキストに変更（VS構造のレイアウトは維持）。`fixtures/reflection_summary_sample.json` の `topic` を新形式に更新。`make verify-all` グリーン。
+- `2026-06-13`: T26 `[Front]` Reflection Panel のアクション配色とVS構造を調整。(1) 「介入する」を emerald（強調）、「見守る」を枠線のみに変更し、介入の選択を誘導。(2) `StanceChip` の人物アイコンを横並び (`-space-x-2`) から縦並び (`flex-col -space-y-2`) に変更し、同じ立場の人物をまとめて配置。(3) `VsRow` を拡張し、立場が2つの場合は左右ミラーのVS表示を維持しつつ、3つ以上の場合は各立場を行として縦に積み、行間に "VS" 区切りを挟む構造に変更（3人目以降の立場も同形式で行を追加するだけで対応可能）。`make verify-all` グリーン。
+- `2026-06-13`: T26 `[Front]` Reflection Panel をさらに微調整。(1) `VsRow` の3立場以上の表示で、各立場（同じ意見の人物グループ）を `border border-slate-700` の枠付きブロックとして視覚的に区切り、ブロックを縦に積んで間に "VS" 区切りを表示。(2) `ReflectionPanel` で `summary.blocks` を `slice(-2)` し、論点（topic）を直近2件のみ表示するように変更。(3) 介入ボタンの文言を「介入する（異議/観点/質問）」→「発言する（異議/観点/質問）」に変更。`make verify-all` グリーン。
 
 ## 6. ハンドオフメモ
 次セッションが最初に読むべきメモ:
@@ -234,4 +264,5 @@
 - T13 で Debate State に `characters` フィールドを追加した。フロント `buildInitialDebateState()` は現状プレースホルダー URL を入れている。T12 でここを `/api/add_character` の戻り値に置き換える。
 - フロント型は `frontend/src/types/state.ts`、Debate Stage 本体は T21 で `frontend/src/screens/DebateStage.tsx` を差し替える形で実装する（props 契約: `state: DebateState`）。
 - T26 で Reflection Panel を実装し、T27 で `DebateState.turn_count`（D12）を導入してフロントのローカル集計を backend 由来の値に差し替え済み。Reflection の発火判定は `DebateStage.tsx` の `maybeShowReflection`（`turn_count % REFLECTION_INTERVAL === 0`）。
-- facilitator の一言は静的コピーのプレースホルダ。動的化（参加者外AIの要約生成）とブロック単位の「論点×立場×キャラアイコン」構造化要約は、バック側のスキーマ拡張/新エンドポイントが必要な後続タスクとして残っている（着手時は新規タスク番号を起票すること）。
+- 「論点×立場×キャラアイコン」の構造化要約は D13 で `POST /api/reflection`（`ReflectionSummary`）として実装済み。`maybeShowReflection` が発火時に呼び出す。Gemini 失敗時・`blocks` 空時は `blocks: []` のフォールバックを返す。
+- Reflection Panel は認知負荷極小化のため `blocks` を文章ではなく VS 構造で描画する設計（2026-06-13 改修）。`summary.facilitator_comment` は API レスポンスに残るが UI には表示しない。`current_topic` をパネル最上部に大きく表示し、`summary.blocks` を `VsRow`/`StanceChip`（アイコン + label、`stance.summary` は hover の `title` のみ）で描画。`blocks` が空の場合はロスター一覧アイコンにフォールバック。アクションは「見守る（次へ）」/「介入する」の2button（介入選択後に異議/観点/質問の3択）。モーダルは背景クリックで閉じない。

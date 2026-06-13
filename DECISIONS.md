@@ -271,6 +271,69 @@ Debate State を返す（ミューテーションせず常に新規構築）。
 
 ---
 
+## D13: Reflection Turn の構造化要約を `/api/reflection` で生成する
+
+**判断**: T26 で見送った2つの退避項目（動的 facilitator / 論点×立場×キャラクタアイコンの
+構造化要約）に対応するため、専用エンドポイント `POST /api/reflection` を新設する。
+入力は Debate State、出力は以下の Reflection Summary（Debate State 自体は変更しない）:
+
+```json
+{
+  "facilitator_comment": "string",
+  "blocks": [
+    {
+      "topic": "string",
+      "stances": [
+        {
+          "label": "string",
+          "summary": "string",
+          "characters": ["string"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+`facilitator_comment` は参加者外AI（ファシリテーター）による中立の要約一言。
+「足りない視点」「追加すべき人物」など今後の進行に関する提案は禁止する
+（PROGRESS.md T26 の制約）。`blocks[].stances[].characters` は roster (`characters[].name`)
+の部分集合のみを許可し、roster 外の名前はバックエンド側でフィルタする。
+
+Gemini 呼び出しは D04 (JSON Mode, `responseSchema=ReflectionSummary`) に従う。失敗時は
+決定論的フォールバック（`facilitator_comment` に静的中立コピー、`blocks=[]`）を返し、
+UI は既存の論点一覧 + 参加者一覧表示にグレースフルに退避する（D09/D10/D11 のフェイル
+セーフ方針を継承）。
+
+**理由**:
+
+- `/api/next_turn` は毎ターン呼ばれるため、3ターンに1回しか使わない reflection 用の
+  追加 LLM 呼び出しを含めると全ターンが遅延する。専用エンドポイントに分離することで
+  next_turn の責務とレイテンシを汚さない
+- Reflection Summary は Debate State と独立した「ビュー専用」データであり、D01 の
+  Debate State スキーマに含めるとスキーマが肥大化する
+- `blocks=[]` のフォールバックにより、Gemini が失敗・空応答でも Reflection Panel は
+  既存の論点一覧 + 参加者一覧表示で壊れず動作する
+
+**影響範囲**:
+
+- `backend/app/models.py`: `ReflectionStance` / `ReflectionBlock` / `ReflectionSummary` を追加
+- `backend/app/gemini_client.py`: `generate_reflection` / `_build_reflection_prompt` を追加
+- `backend/app/reflection.py`（新規）: `build_reflection` オーケストレーション
+  （roster 外キャラ名のフィルタ + フォールバック）
+- `backend/app/routes.py`: `POST /api/reflection` を追加
+- `backend/app/config.py`: `REFLECTION_TIMEOUT_SECONDS` を追加
+- `frontend/src/types/state.ts`: `ReflectionStance` / `ReflectionBlock` / `ReflectionSummary` を追加
+- `frontend/src/api/client.ts`: `reflection(state)` を追加
+- `frontend/src/screens/DebateStage.tsx`: `maybeShowReflection` で `/api/reflection` を
+  呼び出し、`ReflectionPanel` を facilitator 一言 + `blocks` 駆動に変更。
+  「人物追加」ボタンを活性化し既存 `AddCharacterModal`（T25）を再利用
+- `fixtures/reflection_summary_sample.json`（新規）/
+  `backend/tests/fixtures/__init__.py`（`load_reflection_summary`）/
+  `frontend/src/mocks/index.ts`（`reflectionSummarySample`）
+
+---
+
 ## 追加判断の書き方
 
 新しい判断は `D10`, `D11`, ... と連番で追加し、`判断 / 理由 / 影響範囲` を書く。

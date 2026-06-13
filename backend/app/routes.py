@@ -4,7 +4,8 @@ from fastapi import APIRouter
 
 from app.avatar_pipeline import generate_character_avatar
 from app.debate import advance_turn
-from app.models import AddCharacterRequest, AddCharacterResponse, DebateState
+from app.models import AddCharacterRequest, AddCharacterResponse, DebateState, ReflectionSummary
+from app.reflection import build_reflection
 
 router = APIRouter()
 
@@ -18,3 +19,8 @@ def add_character(request: AddCharacterRequest) -> AddCharacterResponse:
 @router.post("/api/next_turn", response_model=DebateState)
 def next_turn(state: DebateState) -> DebateState:
     return advance_turn(state)
+
+
+@router.post("/api/reflection", response_model=ReflectionSummary)
+def reflection(state: DebateState) -> ReflectionSummary:
+    return build_reflection(state)

@@ -26,6 +26,22 @@ export interface DebateState {
   turn_count: number
 }
 
+export interface ReflectionStance {
+  label: string
+  summary: string
+  characters: string[]
+}
+
+export interface ReflectionBlock {
+  topic: string
+  stances: ReflectionStance[]
+}
+
+export interface ReflectionSummary {
+  facilitator_comment: string
+  blocks: ReflectionBlock[]
+}
+
 export interface IntegrationStructureCategory {
   category_name: string
   elements: string[]

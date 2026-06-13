@@ -21,10 +21,11 @@ from app.config import (
     IMAGE_MODEL,
     IMAGE_TIMEOUT_SECONDS,
     NEXT_TURN_TIMEOUT_SECONDS,
+    REFLECTION_TIMEOUT_SECONDS,
     TEXT_MODEL,
     TEXT_TIMEOUT_SECONDS,
 )
-from app.models import DebateState, NextTurnLLMOutput
+from app.models import DebateState, NextTurnLLMOutput, ReflectionSummary
 
 _client: genai.Client | None = None
 
@@ -132,6 +133,64 @@ def generate_next_turn(state: DebateState) -> NextTurnLLMOutput:
     return NextTurnLLMOutput.model_validate(json.loads(text))
 
 
+def generate_reflection(state: DebateState) -> ReflectionSummary:
+    """現在の Debate State から、Reflection Turn 用の構造化要約を生成する。
+
+    D13: responseSchema を指定し JSON を強制する。失敗時は呼び出し元 (app/reflection.py)
+    が決定論的フォールバックを使うため、ここでは例外を投げるだけでよい。
+    """
+    prompt = _build_reflection_prompt(state)
+    response = _get_client().models.generate_content(
+        model=TEXT_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=ReflectionSummary,
+            http_options=types.HttpOptions(timeout=REFLECTION_TIMEOUT_SECONDS * 1000),
+        ),
+    )
+    text = (response.text or "").strip()
+    if not text:
+        raise ValueError("Gemini reflection response was empty")
+    return ReflectionSummary.model_validate(json.loads(text))
+
+
+def _build_reflection_prompt(state: DebateState) -> str:
+    roster = "、".join(c.name for c in state.characters)
+    history_lines = [
+        f"{m.speaker}: {m.text}" for m in state.chat_history[-CHAT_HISTORY_PROMPT_LIMIT:]
+    ]
+    history_text = "\n".join(history_lines) if history_lines else "(まだ発言はありません)"
+    points_text = "、".join(state.current_points) if state.current_points else "(まだなし)"
+
+    return (
+        "あなたは討論番組の進行役（ファシリテーター）です。参加者(roster)には含まれず、"
+        "議論には参加しません。これまでの討論を振り返るための、中立的な構造化要約を"
+        "日本語で作成してください。\n\n"
+        f"テーマ: {state.theme}\n"
+        f"現在の論点: {state.current_topic}\n"
+        f"登場人物（roster）: {roster}\n"
+        f"これまでの発言ログ:\n{history_text}\n"
+        f"現在の論点リスト: {points_text}\n\n"
+        "出力ルール:\n"
+        "- facilitator_comment は、ここまでの議論の流れを1〜2文で中立的にまとめたもの。"
+        "「足りない視点」「追加すべき人物」など、今後の進行に関する提案や誘導は一切"
+        "含めないこと。\n"
+        "- blocks は現在の論点リストに対応する要約ブロックの配列。各ブロックは"
+        " topic（論点）と stances（その論点に対する対立する立場の配列、通常2つ）を"
+        "持つこと。\n"
+        "- 各 stance は label（立場を表す5〜10文字程度の短いラベル）、"
+        "summary（その立場の論理を15〜25文字程度の一言で端的に表したもの。"
+        "対になる stance と対比した際にどう違うかが一目で分かるようにすること）、"
+        "characters（その立場を取っている roster 内の人物名の配列）を持つこと。\n"
+        f"- characters に含める名前は roster ({roster}) に含まれるものだけにすること。\n"
+        "- blocks は最低1つは含めること。topic には現在の論点（または発言ログから読み取れる"
+        "直近の話題）を使い、これまでの発言から各話者がどの立場を取っているかを推定して"
+        "stances を構成すること。発言が少ない場合でも、発言内容から読み取れる範囲で"
+        "推定してよい。"
+    )
+
+
 def _build_next_turn_prompt(state: DebateState) -> str:
     roster = "、".join(c.name for c in state.characters)
     history_lines = [
@@ -157,5 +216,7 @@ def _build_next_turn_prompt(state: DebateState) -> str:
         "- current_speech は選んだ人物の口調・立場を反映した、1〜3文の日本語の発言。\n"
         "- current_points は議論全体を通じた論点リストを、新しい発言を踏まえて更新したもの"
         "（重要な論点を3〜5個、簡潔な日本語の名詞句で）。\n"
-        "- current_topic は現在議論されている小テーマを簡潔に。"
+        "- current_topic は現在議論されている小テーマを、名詞句を「/」で区切った"
+        "10〜20文字程度の短い表現にすること（例:「無形価値の評価方法/成果への繋がり」）。"
+        "文章や「〜について」「〜の評価」のような冗長な言い回しは避けること。"
     )

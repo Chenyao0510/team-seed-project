@@ -1,7 +1,7 @@
-import { useEffect, useState, Fragment } from 'react'
+import { useEffect, useState, useRef, Fragment } from 'react'
 import { AnimatePresence, motion, useIsPresent } from 'framer-motion'
 import type { Character, DebateState, DebateStatus, ChatHistoryEntry, ReflectionSummary } from '../types/state'
-import { addCharacter, nextTurn, reflection } from '../api/client'
+import { addCharacter, nextTurn, reflection, API_BASE_URL } from '../api/client'
 
 // PointsPanel (T33) のアニメーション秒数（CONSTRAINTS.md: マジックナンバー禁止）。
 // 1ターンで「追加=最大1 / 入れ替え=最大1」を Gemini 側で強制し (D11 prompt)、
@@ -189,6 +189,7 @@ export function DebateStage({
                 intervention={intervention}
                 onCancel={() => setIntervention(null)}
                 onSubmit={(text) => submitIntervention(intervention!, text)}
+                userName={state.user.name}
               />
               {/* 進行ボタンをテロップ横か下に配置 */}
               <div className="mx-auto mt-4 flex max-w-3xl justify-end">
@@ -769,6 +770,7 @@ interface TelopBoxProps {
   intervention: InterventionKind | null
   onCancel: () => void
   onSubmit: (text: string) => void
+  userName?: string
 }
 
 function TelopBox({
@@ -778,9 +780,61 @@ function TelopBox({
   intervention,
   onCancel,
   onSubmit,
+  userName = 'あなた',
 }: TelopBoxProps) {
   const empty = speech.trim().length === 0
   const [draft, setDraft] = useState('')
+  const [isPlaying, setIsPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // 音声再生ロジック
+  useEffect(() => {
+    // 既存の音声を停止
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ""
+      audioRef.current = null
+      setIsPlaying(false)
+    }
+
+    // AIの発言かつ発言が存在する場合のみ自動再生を試みる
+    if (!empty && speaker && speaker !== USER_SPEAKER && speaker !== userName) {
+      const url = `${API_BASE_URL}/api/tts?text=${encodeURIComponent(speech)}&character_name=${encodeURIComponent(speaker)}`
+      const audio = new Audio(url)
+      audioRef.current = audio
+      
+      audio.onended = () => setIsPlaying(false)
+      audio.onpause = () => setIsPlaying(false)
+      audio.onplay = () => setIsPlaying(true)
+      
+      audio.play().catch((err) => {
+        console.error("TTS autoplay failed (usually due to browser policy):", err)
+        setIsPlaying(false)
+      })
+    }
+    
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.src = ""
+        audioRef.current = null
+      }
+    }
+  }, [speech, speaker, userName, empty])
+
+  const handlePlayClick = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause()
+        audioRef.current.currentTime = 0
+      } else {
+        audioRef.current.currentTime = 0
+        audioRef.current.play().catch(console.error)
+      }
+    }
+  }
+
+  const isUserSpeaker = speaker === USER_SPEAKER || speaker === userName
 
   if (intervention) {
     const label = INTERVENTION_LABEL[intervention]
@@ -857,14 +911,44 @@ function TelopBox({
         </p>
       ) : (
         <>
-          {speaker && (
-            <p
-              data-testid="telop-speaker"
-              className="mb-2 text-sm font-semibold text-emerald-300"
-            >
-              {speaker}
-            </p>
-          )}
+          <div className="mb-2 flex items-center justify-between">
+            {speaker && (
+              <p
+                data-testid="telop-speaker"
+                className="text-sm font-semibold text-emerald-300"
+              >
+                {speaker}
+              </p>
+            )}
+            {/* 再生ボタン (ユーザー以外の場合) */}
+            {!isUserSpeaker && speaker && (
+              <button
+                onClick={handlePlayClick}
+                className="flex h-8 items-center justify-center rounded bg-slate-700/50 px-3 text-xs text-slate-300 hover:bg-slate-700 hover:text-emerald-300 transition-colors"
+                title="音声を再生/停止"
+              >
+                {isPlaying ? (
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex items-center justify-center gap-0.5 h-3">
+                      <motion.div className="w-[2px] bg-emerald-400 rounded-full" animate={{ height: ['4px', '12px', '4px'] }} transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut" }} />
+                      <motion.div className="w-[2px] bg-emerald-400 rounded-full" animate={{ height: ['8px', '16px', '8px'] }} transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut", delay: 0.2 }} />
+                      <motion.div className="w-[2px] bg-emerald-400 rounded-full" animate={{ height: ['4px', '10px', '4px'] }} transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut", delay: 0.4 }} />
+                    </div>
+                    <span className="text-emerald-400">再生中</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                      <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                      <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                    </svg>
+                    <span>音声を再生</span>
+                  </div>
+                )}
+              </button>
+            )}
+          </div>
           <p
             data-testid="telop-speech"
             className="text-lg leading-relaxed text-slate-100"

@@ -1,7 +1,7 @@
 // Backend (FastAPI) 呼び出しを集約する薄い apiClient モジュール。
 // docs/ARCHITECTURE.md: 「バック呼び出しは fetch をラップした薄い apiClient モジュールに集約する」
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
 export interface AddCharacterResponse {
   avatar_url: string

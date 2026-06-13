@@ -68,6 +68,7 @@ export function DebateStage({
   const [showReflection, setShowReflection] = useState(false)
   const [reflectionSummary, setReflectionSummary] = useState<ReflectionSummary | null>(null)
   const [reflectionLoading, setReflectionLoading] = useState(false)
+  const [prefetchedReflection, setPrefetchedReflection] = useState<ReflectionSummary | null>(null)
 
   const existingNames = state.characters.map((c) => c.name)
 
@@ -87,6 +88,8 @@ export function DebateStage({
       agent_thoughts: {},
     })
     setIntervention(null)
+    // 介入後は文脈が変わるためキャッシュをクリア (T65)
+    setPrefetchedReflection(null)
   }
 
   const handleOpenHistory = () => {
@@ -96,11 +99,13 @@ export function DebateStage({
 
   const handleReflectionContinue = () => {
     setShowReflection(false)
+    setPrefetchedReflection(null)
     void handleNextTurn()
   }
 
   const handleReflectionIntervention = (kind: InterventionKind) => {
     setShowReflection(false)
+    setPrefetchedReflection(null)
     setIntervention(kind)
   }
 
@@ -108,14 +113,27 @@ export function DebateStage({
   // REFLECTION_INTERVAL の倍数になったら Reflection Panel を表示し、
   // facilitator 一言 + 論点×立場×キャラの構造化要約を /api/reflection から取得する。
   const maybeShowReflection = (newState: DebateState) => {
-    if (newState.turn_count % REFLECTION_INTERVAL === 0) {
+    const isReflectionTurn = newState.turn_count % REFLECTION_INTERVAL === 0
+    const isPreFetchTurn = newState.turn_count % REFLECTION_INTERVAL === REFLECTION_INTERVAL - 1
+
+    if (isReflectionTurn) {
       setShowReflection(true)
-      setReflectionSummary(null)
-      setReflectionLoading(true)
+      if (prefetchedReflection) {
+        setReflectionSummary(prefetchedReflection)
+        setReflectionLoading(false)
+      } else {
+        setReflectionSummary(null)
+        setReflectionLoading(true)
+        reflection(newState)
+          .then((summary) => setReflectionSummary(summary))
+          .catch((err) => console.error(err))
+          .finally(() => setReflectionLoading(false))
+      }
+    } else if (isPreFetchTurn) {
+      // 次のターンがリフレクションなので先行取得しておく (T65)
       reflection(newState)
-        .then((summary) => setReflectionSummary(summary))
-        .catch((err) => console.error(err))
-        .finally(() => setReflectionLoading(false))
+        .then((summary) => setPrefetchedReflection(summary))
+        .catch((err) => console.error('Pre-fetch reflection failed:', err))
     }
   }
 

@@ -2,19 +2,20 @@
 
 ## プロジェクト概要
 
-**プロダクト**: AI×Growth Hackathon 向け 3 画面アプリ。AI 同士の議論を人間が観察し、リアルタイムに介入することで自分の思考を拡張する。
+**プロダクト**: "Insight Navigator" -- AI 同士の議論を観察・介入することで「答え」ではなく「問いの構造と進化」を持ち帰らせる Web アプリ。
 
-**画面構成**:
+**画面構成 (Setup → Stage → Map の 3 画面)**:
 
-1. 入力画面: テーマ・登場人物選択
-2. 討論画面: 議論可視化 + ユーザー介入 UI
-3. 結論画面: Before / After + 介入の称賛 + シェア導線
+1. **Screen 0: Setup** (テーマ入力＆初期メンバー編成): テーマと初期登場人物を決定し、動的アバター生成パイプラインで全員分のアバターを事前生成する
+2. **Screen 1: Debate Stage** (討論＆介入): ギャルゲ風横並びレイアウト + ユーザー右端固定 + 中央テロップ + 介入アクション群（人物追加・異議・観点・質問）
+3. **Screen 2: Integration Map** (視座の獲得レポート): 枠なし Bento UI + Framer Motion stagger アニメで構造マップを構築
 
 **技術スタック**:
 
-- フロント: Vite + React 19 + TypeScript + Tailwind CSS v4 (`frontend/`)
+- フロント: Vite + React 19 + TypeScript + Tailwind CSS v4 + Framer Motion (`frontend/`)
 - バック: FastAPI + Python 3.13 + google-genai (Gemini) (`backend/`)
-- 状態管理: 単一の State オブジェクト (JSON) をフロント・バック間で POST キャッチボール
+- 動的アバター: Gemini Search Grounding + 画像生成 API (Nanobanana 等) + 背景透過処理（Screen 0 / Screen 1 で共有）
+- 状態管理: 画面ごとに定義された State JSON をフロント・バック間で POST キャッチボール（スキーマは `DECISIONS.md` D01）
 
 詳しいプロダクト仕様は `docs/PROJECT.md`、システム設計は `docs/ARCHITECTURE.md` を参照。
 
@@ -53,7 +54,7 @@ docs/ARCHITECTURE.md -- システム設計
 1. `make verify-all` がエラーなくグリーン
 2. `PROGRESS.md` を更新（完了 → `[x]`、中断は状況メモを残す）
 3. **1 つの論理操作 = 1 コミット (Atomic)** で git コミット
-4. 次セッションが startup ルーティンを通せば再開できる状態にする
+4. 次セッションが 出勤 ルーティンを通せば再開できる状態にする
 
 ## Definition of Done
 

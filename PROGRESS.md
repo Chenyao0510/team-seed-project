@@ -41,8 +41,9 @@
 凡例: `[ ]` Todo / `[~]` In Progress / `[x]` Done
 
 ### Phase 0: ベースライン疎通
-- [ ] **T01**: `make init` で全依存関係インストール、`make verify-all` がグリーン
+- [x] **T01**: `make init` で全依存関係インストール、`make verify-all` がグリーン
   - 検証基準: `/api/health` が 200 を返す、frontend `vite build` が成功、pytest がグリーン
+  - 実績: 2026-06-13 セッションで `make verify-all` グリーン確認済 (frontend lint / tsc / ruff / pytest 1 passed / vite build 全通過)
 - [ ] **T02**: フロントに Tailwind CSS v4 を導入し、`@import "tailwindcss"` を有効化
   - 検証基準: 任意の Tailwind クラスが効くサンプル要素で確認
 

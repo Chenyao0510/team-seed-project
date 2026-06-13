@@ -4,48 +4,52 @@
 
 ---
 
-## D01: 単一 State JSON で全体を管理する
+## D01: 画面ごとの State JSON で全体を管理する
 
-**判断**: フロント・バック間のやり取りは、単一の State オブジェクト (JSON) を毎回 POST でキャッチボールする方式とする。
+**判断**: フロント・バック間のやり取りは、**画面ごとに定義された State オブジェクト (JSON)** を毎回 POST でキャッチボールする方式とする。Screen 1 (Debate Stage) 用と Screen 2 (Integration Map) 用の 2 種類。本ファイルが State スキーマの Source of Truth。
 
 **理由**:
 
 - ハッカソン 24 時間で複雑な状態管理ライブラリやエージェントフレームワークを導入するコストが高い
 - フロントとバックが「同じ State を見ている」ことが保証されると、デバッグが圧倒的に楽
 - State がそのままセッションの保存形式 (JSON ダンプ) として使える
-- 介入機能の実装が容易：State の `interventions` に追記するだけ
+- 画面ごとに分けることで「Debate 中は描画と発話更新だけ」「Integration では構造マップに集中」と関心を分離できる
 
-**State JSON 構造 (仕様)**:
+### Debate State (Screen 1) スキーマ
 
 ```json
 {
-  "session_id": "uuid",
-  "theme": "string",
-  "characters": [
-    { "id": "string", "name": "string", "stance": "string" }
-  ],
-  "turns": [
-    {
-      "turn_no": 0,
-      "speaker_id": "string",
-      "utterance": "string",
-      "ts": "iso-8601"
-    }
-  ],
-  "interventions": [
-    {
-      "after_turn_no": 0,
-      "kind": "rebut | question | add_view",
-      "content": "string",
-      "ts": "iso-8601"
-    }
-  ],
-  "status": "input | debating | concluded",
-  "summary": null
+  "theme": "string (不変)",
+  "current_topic": "string",
+  "active_character": "string",
+  "status": "thinking | speaking | waiting",
+  "current_speech": "string",
+  "current_points": ["string"],
+  "chat_history": [
+    {"speaker": "string", "text": "string", "avatar_url": "string"}
+  ]
 }
 ```
 
-`summary` は `/api/summarize` 後に埋まる。pydantic でスキーマ化し、入出力で検証する。
+### Integration State (Screen 2) スキーマ
+
+```json
+{
+  "before_question": "string",
+  "after_question": "string",
+  "structure_map": [
+    {
+      "category_name": "string",
+      "elements": ["string"],
+      "highlighted_element_index": 0
+    }
+  ],
+  "user_catalyst": "string",
+  "connective_value_praise": "string"
+}
+```
+
+pydantic でスキーマ化し、入出力で必ず検証する。Screen 0 (Setup) は遷移時にテーマと初期メンバー (名前 + アバター URL) を Debate State の初期値として渡す。
 
 ---
 
@@ -90,8 +94,8 @@
 
 **理由**:
 
-- 画面が 3 つしかない
-- 「単一 State JSON」がメインの構造で、Reducer 一つで十分
+- 画面が Setup / Stage / Map の 3 つだけ
+- 「画面ごとの State JSON」がメインの構造で、Reducer 一つで十分
 - 過剰な抽象化を避ける (YAGNI)
 
 ---
@@ -118,6 +122,40 @@
 
 ---
 
+## D08: アニメーションは Framer Motion で統一する
+
+**判断**: フロントのアニメーション（画面遷移、stagger 構築、発話演出）は Framer Motion を使う。CSS transitions / 自前タイマー駆動は使わない。
+
+**理由**:
+
+- Integration Map の stagger 構築アニメが体験の核（「構造が組み上がる」演出）
+- React 19 と相性が良く宣言的に書ける
+- 介入時のキャラハイライト・テロップ切り替えも一貫した API で扱える
+
+**影響範囲**: `frontend/` のみ。`make init` で `pnpm add framer-motion` を T02 / 関連タスクで行う。
+
+---
+
+## D09: 動的アバター生成パイプラインを 3 段階構成にする
+
+**判断**: 「人物追加」機能のアバター生成は以下の 3 段で構築する:
+
+1. Gemini Search Grounding で人物のビジュアルリファレンスを取得
+2. 画像生成 API (Nanobanana 等) でアバター画像を生成
+3. 背景透過処理を実行
+
+各段でタイムアウト・リトライを設ける。最終的に失敗した場合はプレースホルダーアバターでフォールバックし、UI を壊さない。
+
+**理由**:
+
+- ユーザーが任意の人物名を入力しても横並びステージに違和感なく追加できる
+- 1 段で失敗してもフェイルセーフがあれば体験が壊れない
+- 各段を独立モジュール化することで、ハッカソン中にどこかを差し替え可能
+
+**影響範囲**: `backend/app/avatar_pipeline.py` (新規予定)。`.env` に画像生成 API の認証情報を追加する必要がある。
+
+---
+
 ## 追加判断の書き方
 
-新しい判断は `D08`, `D09`, ... と連番で追加し、`判断 / 理由 / 影響範囲` を書く。
+新しい判断は `D10`, `D11`, ... と連番で追加し、`判断 / 理由 / 影響範囲` を書く。

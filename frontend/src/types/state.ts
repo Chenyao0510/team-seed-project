@@ -23,6 +23,7 @@ export interface DebateState {
   current_points: string[]
   characters: Character[]
   chat_history: ChatHistoryEntry[]
+  turn_count: number
 }
 
 export interface IntegrationStructureCategory {

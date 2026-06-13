@@ -40,6 +40,8 @@ def test_next_turn_advances_turn(monkeypatch):
     assert archived["speaker"] == state["active_character"]
     assert archived["text"] == state["current_speech"]
 
+    assert body["turn_count"] == state["turn_count"] + 1
+
 
 def test_next_turn_falls_back_on_gemini_failure(monkeypatch):
     state = load_debate_state()
@@ -61,6 +63,7 @@ def test_next_turn_falls_back_on_gemini_failure(monkeypatch):
     assert body["active_character"] != previous_speaker
     assert body["characters"] == state["characters"]
     assert len(body["chat_history"]) == len(state["chat_history"]) + 1
+    assert body["turn_count"] == state["turn_count"] + 1
 
 
 def test_next_turn_rejects_invalid_state():

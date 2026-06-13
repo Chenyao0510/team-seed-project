@@ -33,6 +33,10 @@ const STATUS_LABEL: Record<DebateStatus, string> = {
   waiting: '待機中',
 }
 
+// Reflection Turn (T26/T27): 何ターンごとに一時停止して Reflection Panel を表示するか。
+// turn_count は backend が `/api/next_turn` のたびに+1して返す値（ユーザー介入はカウントしない）。
+const REFLECTION_INTERVAL = 3
+
 export function DebateStage({
   state,
   onOpenHistory,
@@ -47,6 +51,7 @@ export function DebateStage({
   const [isAddCharOpen, setIsAddCharOpen] = useState(false)
   const isActive = (name: string) => state.active_character === name
   const [intervention, setIntervention] = useState<InterventionKind | null>(null)
+  const [showReflection, setShowReflection] = useState(false)
 
   const existingNames = state.characters.map((c) => c.name)
 
@@ -72,12 +77,31 @@ export function DebateStage({
     if (onOpenHistory) onOpenHistory()
   }
 
+  const handleReflectionContinue = () => {
+    setShowReflection(false)
+    void handleNextTurn()
+  }
+
+  const handleReflectionIntervention = (kind: InterventionKind) => {
+    setShowReflection(false)
+    setIntervention(kind)
+  }
+
+  // AI 進行ターンが完了した際の共通処理。backend が返す turn_count が
+  // REFLECTION_INTERVAL の倍数になったら Reflection Panel を表示する。
+  const maybeShowReflection = (newState: DebateState) => {
+    if (newState.turn_count % REFLECTION_INTERVAL === 0) {
+      setShowReflection(true)
+    }
+  }
+
   const handleNextTurn = async () => {
     if (isGenerating || !onStateChange) return
     setIsGenerating(true)
     try {
       const newState = await nextTurn(state)
       onStateChange(newState)
+      maybeShowReflection(newState)
     } catch (err) {
       console.error(err)
       alert('API呼び出しに失敗しました')
@@ -94,7 +118,10 @@ export function DebateStage({
       setIsGenerating(true)
       try {
         const newState = await nextTurn(state)
-        if (mounted) onStateChange(newState)
+        if (mounted) {
+          onStateChange(newState)
+          maybeShowReflection(newState)
+        }
       } catch (err) {
         console.error(err)
       } finally {
@@ -210,6 +237,148 @@ export function DebateStage({
           </aside>
         </div>
       )}
+
+      {/* Reflection Turn (T26): 一定ターンごとに討論を一時停止し、ユーザーに主導権を返す */}
+      {showReflection && (
+        <ReflectionPanel
+          theme={state.theme}
+          currentTopic={state.current_topic}
+          points={state.current_points}
+          characters={state.characters}
+          onContinue={handleReflectionContinue}
+          onAddViewpoint={() => handleReflectionIntervention('viewpoint')}
+          onObject={() => handleReflectionIntervention('objection')}
+        />
+      )}
+    </div>
+  )
+}
+
+interface ReflectionPanelProps {
+  theme: string
+  currentTopic: string
+  points: string[]
+  characters: DebateState['characters']
+  onContinue: () => void
+  onAddViewpoint: () => void
+  onObject: () => void
+}
+
+// Reflection Panel (T26): AIによる「足りない視点」「追加すべき人物」の提案は禁止。
+// 現在の問い・論点構造のみを示し、ユーザーが次の行動を選ぶための余白を作る。
+function ReflectionPanel({
+  theme,
+  currentTopic,
+  points,
+  characters,
+  onContinue,
+  onAddViewpoint,
+  onObject,
+}: ReflectionPanelProps) {
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <section
+        data-testid="reflection-panel"
+        className="mx-4 w-full max-w-2xl rounded-2xl border-2 border-emerald-400/60 bg-slate-800 p-8 shadow-2xl"
+      >
+        <p className="mb-1 text-xs uppercase tracking-wider text-emerald-300">
+          Reflection Turn
+        </p>
+        <h2 className="mb-4 text-sm leading-relaxed text-slate-200">
+          ここまでの議論です。続けますか、それともあなたの視点を加えますか？
+        </h2>
+
+        <div className="mb-4 space-y-1">
+          <p className="text-xs text-slate-400">現在の問い</p>
+          <p className="text-base font-semibold text-slate-100" title={theme}>
+            {theme}
+          </p>
+        </div>
+
+        <div className="mb-4 space-y-1">
+          <p className="text-xs text-slate-400">フォーカス中の論点</p>
+          <p className="text-sm text-slate-100" title={currentTopic}>
+            {currentTopic || '未設定'}
+          </p>
+        </div>
+
+        <div className="mb-4 space-y-2">
+          <p className="text-xs text-slate-400">論点一覧</p>
+          {points.length === 0 ? (
+            <p className="text-sm text-slate-500">まだ論点が出ていません</p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {points.map((p) => (
+                <li
+                  key={p}
+                  className="rounded bg-slate-700/60 px-3 py-1 text-sm text-slate-100"
+                >
+                  {p}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="mb-6 space-y-2">
+          <p className="text-xs text-slate-400">参加者</p>
+          <ul className="flex gap-3">
+            {characters.map((c) => (
+              <li key={c.name} className="flex flex-col items-center">
+                <div className="h-12 w-12 overflow-hidden rounded-full bg-slate-700 ring-2 ring-slate-600">
+                  <img src={c.avatar_url} alt="" className="h-full w-full object-cover" />
+                </div>
+                <span className="mt-1 text-xs text-slate-300">{c.name}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-3 border-t border-slate-700 pt-4">
+          <button
+            type="button"
+            data-testid="reflection-continue"
+            onClick={onContinue}
+            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-500"
+          >
+            続きを見る
+          </button>
+          <button
+            type="button"
+            data-testid="reflection-add-character"
+            disabled
+            title="人物追加（T25 で実装予定）"
+            className="rounded-md border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-40"
+          >
+            人物追加
+          </button>
+          <button
+            type="button"
+            data-testid="reflection-add-viewpoint"
+            onClick={onAddViewpoint}
+            className="rounded-md border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
+          >
+            観点追加
+          </button>
+          <button
+            type="button"
+            data-testid="reflection-objection"
+            onClick={onObject}
+            className="rounded-md border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
+          >
+            異議を唱える
+          </button>
+          <button
+            type="button"
+            data-testid="reflection-summarize"
+            disabled
+            title="議論を整理する（T31 で実装予定）"
+            className="rounded-md border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-40"
+          >
+            議論を整理する
+          </button>
+        </div>
+      </section>
     </div>
   )
 }

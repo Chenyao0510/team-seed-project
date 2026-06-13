@@ -6,6 +6,15 @@ BACKEND_VENV ?= backend/.venv
 BACKEND_PY   := $(BACKEND_VENV)/bin/python
 BACKEND_PIP  := $(BACKEND_VENV)/bin/pip
 
+# NixOS shim: pip-installed wheels (numpy, opencv-python) link against
+# libstdc++.so.6 which lives under nix-ld's library dir on NixOS. Inject
+# it into LD_LIBRARY_PATH only when nix-ld is present. No-op elsewhere.
+ifdef NIX_LD_LIBRARY_PATH
+NIXLD_ENV := LD_LIBRARY_PATH="$(NIX_LD_LIBRARY_PATH)$${LD_LIBRARY_PATH:+:$$LD_LIBRARY_PATH}"
+else
+NIXLD_ENV :=
+endif
+
 help:
 	@echo "Targets:"
 	@echo "  init          create backend venv, install frontend + backend deps"
@@ -33,7 +42,7 @@ lint:
 	cd frontend && $(PNPM) lint
 	@echo "==> Lint backend (ruff)"
 	@if [ -x $(BACKEND_PY) ]; then \
-	  cd backend && ../$(BACKEND_VENV)/bin/python -m ruff check .; \
+	  cd backend && $(NIXLD_ENV) ../$(BACKEND_VENV)/bin/python -m ruff check .; \
 	else \
 	  echo "(backend venv missing; run 'make init')"; exit 1; \
 	fi
@@ -45,7 +54,7 @@ check-types:
 test:
 	@echo "==> Test backend"
 	@if [ -x $(BACKEND_PY) ]; then \
-	  cd backend && ../$(BACKEND_VENV)/bin/python -m pytest -q; \
+	  cd backend && $(NIXLD_ENV) ../$(BACKEND_VENV)/bin/python -m pytest -q; \
 	else \
 	  echo "(backend venv missing; run 'make init')"; exit 1; \
 	fi
@@ -65,7 +74,7 @@ dev-frontend:
 
 dev-backend:
 	@if [ -x $(BACKEND_PY) ]; then \
-	  cd backend && ../$(BACKEND_VENV)/bin/python -m uvicorn main:app --reload --port 8000; \
+	  cd backend && $(NIXLD_ENV) ../$(BACKEND_VENV)/bin/python -m uvicorn main:app --reload --port 8000; \
 	else \
 	  echo "(backend venv missing; run 'make init')"; exit 1; \
 	fi
@@ -77,3 +86,4 @@ clean:
 	rm -rf frontend/dist frontend/node_modules/.vite
 	rm -rf backend/.pytest_cache backend/.ruff_cache
 	find backend -type d -name __pycache__ -exec rm -rf {} +
+

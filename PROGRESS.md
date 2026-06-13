@@ -129,7 +129,7 @@
     - スキーマ変更なし（D01）。バックは T12 で実装済の `/api/add_character` を再利用。
     - `make verify-all` グリーン（lint / tsc / ruff / pytest 9 passed / vite build 全通過）、
       `dev-frontend` で `/` と `/?mock=debate` 両方 HTTP 200 を確認。
-- [ ] **T26** `[Front]`: Reflection Turn UI（介入の余白表示）
+- [x] **T26** `[Front]`: Reflection Turn UI（介入の余白表示）
   - 目的:
     - ユーザーへ介入を強制しない
     - AIから次の視点を誘導しない

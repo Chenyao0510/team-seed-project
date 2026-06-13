@@ -10,6 +10,7 @@ client = TestClient(app)
 
 def _stub_integration() -> IntegrationState:
     return IntegrationState(
+        central_concept="大学",
         before_question="大学は行くべきか？",
         after_question="知識と人脈のどちらにコストをかけるべきか？",
         structure_map=[
@@ -40,6 +41,7 @@ def test_summarize_returns_integration_state(monkeypatch):
     assert response.status_code == 200
     body = response.json()
 
+    assert body["central_concept"] == expected.central_concept
     assert body["before_question"] == expected.before_question
     assert body["after_question"] == expected.after_question
     assert body["user_catalyst"] == expected.user_catalyst
@@ -65,6 +67,10 @@ def test_summarize_falls_back_on_gemini_failure(monkeypatch):
     # 必須フィールドが揃っており、Bento UI を破綻させない
     assert isinstance(body["before_question"], str) and body["before_question"]
     assert isinstance(body["after_question"], str) and body["after_question"]
+    # D15: フォールバックは theme から短い名詞句を派生する。
+    # サンプル theme "大学は必要か？" → "大学"
+    assert body["central_concept"] == "大学"
+    assert len(body["central_concept"]) <= 12
     assert isinstance(body["structure_map"], list) and len(body["structure_map"]) >= 1
     assert all(
         isinstance(cat["elements"], list) and len(cat["elements"]) >= 1

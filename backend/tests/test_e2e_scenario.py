@@ -149,6 +149,7 @@ def test_full_scenario_state_survives_screen0_to_screen2(monkeypatch, tmp_path):
 
     # --- Screen 2: 統合レポート (T31) ---
     fake_integration = IntegrationState(
+        central_concept="大学",
         before_question="そもそも大学は必要か？",
         after_question="知識と人脈のどちらにコストをかけるべきか？",
         structure_map=[

@@ -13,7 +13,8 @@ type View =
   | { kind: 'integration'; debate: DebateState; integration: IntegrationState }
 
 // Dev-only shortcut so designers can hit a downstream screen without filling Setup.
-// e.g. `?mock=debate` or `?mock=integration`. Remove when E2E (T41) covers the path.
+// e.g. `?mock=debate` or `?mock=integration`. Kept intentionally for design/dev use;
+// the Screen0->1->2 chain is covered by backend/tests/test_e2e_scenario.py (T41).
 function initialView(): View {
   if (typeof window === 'undefined') return { kind: 'setup' }
   const mock = new URLSearchParams(window.location.search).get('mock')

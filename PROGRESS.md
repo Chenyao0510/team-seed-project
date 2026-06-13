@@ -91,8 +91,17 @@
   - 検証基準: トグルでログ表示/非表示が切り替わり、アイコンが正しく表示される
 - [ ] **T23** `[Front]`: 介入アクション（異議・観点・質問）の入力モード実装
   - 検証基準: キーボード入力が中央テロップに表示され、Stateに追記される
-- [ ] **T24** `[Back]`: `/api/next_turn` 実装（State 受け取り → Gemini JSON構造化生成 → State 返却）
+- [x] **T24** `[Back]`: `/api/next_turn` 実装（State 受け取り → Gemini JSON構造化生成 → State 返却）
   - 検証基準: LangGraphなしで、Geminiが正しく次のキャラと発言、論点リストを更新して返す（pytest で `backend/tests/fixtures` のサンプルから検証）
+  - 実績: 2026-06-13 実装完了。`backend/app/models.py` に `DebateState` 系 pydantic モデルと
+    `NextTurnLLMOutput`（Gemini responseSchema 用）を追加。`backend/app/gemini_client.py` に
+    `generate_next_turn`（D04 JSON Mode）を追加。`backend/app/debate.py`（新規）で
+    chat_history アーカイブ + roster ローテーションフォールバックのオーケストレーション
+    `advance_turn` を実装し、`POST /api/next_turn` を `routes.py` に追加。詳細は
+    `DECISIONS.md` D11。`backend/tests/test_next_turn.py` を新規追加（正常系・Gemini失敗
+    フォールバック・不正State 422 の3テスト）。合わせて T13 由来の既存 TS 型エラー
+    (`frontend/src/lib/buildDebateState.ts`) を修正。`make verify-all` グリーン
+    (pytest 9 passed / ruff / tsc / vite build 全通過)。
 - [ ] **T25** `[Both]`: 人物追加モーダルUIとアバター生成パイプライン（T12）の再利用
   - Front: モーダル UI + `/api/add_character` 叩き + ステージへの追加描画
   - Back: T12 のパイプラインを再利用（API 変更なし）
@@ -113,7 +122,7 @@
 ## 5. セッションログ
 セッション終了時にこのセクションへ追記する。
 
-- `YYYY-MM-DD`: TBD
+- `2026-06-13`: T24 `[Back]` `/api/next_turn` 実装完了（D11）。`make verify-all` グリーン。
 
 ## 6. ハンドオフメモ
 次セッションが最初に読むべきメモ:

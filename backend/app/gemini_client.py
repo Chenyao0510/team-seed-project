@@ -8,18 +8,23 @@ CONSTRAINTS.md: API キーはここで一度だけ読み込み、コードへの
 本モジュールは失敗時に例外を投げるだけでよい。
 """
 
+import json
+
 from google import genai
 from google.genai import types
 
 from app.config import (
+    CHAT_HISTORY_PROMPT_LIMIT,
     CHROMA_KEY_BGR,
     GEMINI_API_KEY,
     GROUNDING_TIMEOUT_SECONDS,
     IMAGE_MODEL,
     IMAGE_TIMEOUT_SECONDS,
+    NEXT_TURN_TIMEOUT_SECONDS,
     TEXT_MODEL,
     TEXT_TIMEOUT_SECONDS,
 )
+from app.models import DebateState, NextTurnLLMOutput
 
 _client: genai.Client | None = None
 
@@ -103,3 +108,54 @@ def generate_avatar_image(appearance_description: str) -> bytes:
                 return part.inline_data.data
 
     raise ValueError("Gemini image response did not contain inline image data")
+
+
+def generate_next_turn(state: DebateState) -> NextTurnLLMOutput:
+    """現在の Debate State から、次のターン（話者・発言・論点）を構造化生成する。
+
+    D04: responseSchema を指定し JSON を強制する。失敗時は呼び出し元 (app/debate.py)
+    がローテーション・フォールバックするため、ここでは例外を投げるだけでよい。
+    """
+    prompt = _build_next_turn_prompt(state)
+    response = _get_client().models.generate_content(
+        model=TEXT_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=NextTurnLLMOutput,
+            http_options=types.HttpOptions(timeout=NEXT_TURN_TIMEOUT_SECONDS * 1000),
+        ),
+    )
+    text = (response.text or "").strip()
+    if not text:
+        raise ValueError("Gemini next_turn response was empty")
+    return NextTurnLLMOutput.model_validate(json.loads(text))
+
+
+def _build_next_turn_prompt(state: DebateState) -> str:
+    roster = "、".join(c.name for c in state.characters)
+    history_lines = [
+        f"{m.speaker}: {m.text}" for m in state.chat_history[-CHAT_HISTORY_PROMPT_LIMIT:]
+    ]
+    history_text = "\n".join(history_lines) if history_lines else "(まだ発言はありません)"
+    points_text = "、".join(state.current_points) if state.current_points else "(まだなし)"
+
+    return (
+        "あなたは討論番組の進行役です。以下の討論の状況をもとに、次に発言する人物を1人選び、"
+        "その人物として日本語で発言してください。\n\n"
+        f"テーマ: {state.theme}\n"
+        f"現在の論点: {state.current_topic}\n"
+        f"登場人物（roster）: {roster}\n"
+        f"直前の発言者: {state.active_character}\n"
+        f"これまでの発言ログ:\n{history_text}\n"
+        f"現在の論点リスト: {points_text}\n\n"
+        "ルール:\n"
+        f"- active_character は roster ({roster}) の中から、直前の発言者"
+        f"（{state.active_character}）とは別の人物を選ぶこと。\n"
+        "- 発言ログの末尾の発言者が roster に含まれない場合、それはユーザーからの介入"
+        "（異議・観点・質問）です。次の発言者はその介入に正面から反応すること。\n"
+        "- current_speech は選んだ人物の口調・立場を反映した、1〜3文の日本語の発言。\n"
+        "- current_points は議論全体を通じた論点リストを、新しい発言を踏まえて更新したもの"
+        "（重要な論点を3〜5個、簡潔な日本語の名詞句で）。\n"
+        "- current_topic は現在議論されている小テーマを簡潔に。"
+    )

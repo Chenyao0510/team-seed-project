@@ -13,7 +13,7 @@ export function buildInitialDebateState(setup: SetupResult): DebateState {
     status: 'waiting',
     current_speech: '',
     current_points: [],
-    characters: setup.members.map((name) => ({
+    characters: setup.members.map(({ name }) => ({
       name,
       avatar_url: PLACEHOLDER_AVATAR_URL,
     })),

@@ -201,6 +201,43 @@ pydantic でスキーマ化し、入出力で必ず検証する。Screen 0 (Setu
 
 ---
 
+## D11: `/api/next_turn` のターン進行セマンティクス
+
+**判断**: T24 `/api/next_turn` は、受け取った Debate State を以下の手順で1ターン進め、新しい
+Debate State を返す（ミューテーションせず常に新規構築）。
+
+1. 直前の `active_character` の `current_speech` を `chat_history` に追記する
+   （`current_speech` が空、または既に末尾と同一の場合は追記しない）
+2. Gemini (`gemini-2.5-flash`) に State を渡し、`responseSchema` で
+   `active_character / current_speech / current_points / current_topic` を構造化生成させる
+   （D04）。`status` は LLM に委ねず、Python 側で常に `"speaking"` に決定する
+3. Gemini の `active_character` が `characters` (roster) に含まれない、または Gemini 呼び出し
+   自体が失敗した場合は、roster 内で直前の話者の次の人物に決定的にローテーションする
+   フォールバックを使う（`current_speech` は継続発言の汎用文、`current_points` / `current_topic`
+   は据え置き）
+
+プロンプトでは、`chat_history` 末尾の発言者が roster 外（=ユーザー介入）の場合、次の発言者は
+その介入に正面から反応するよう指示する（CONSTRAINTS: 介入で議論の流れが変わる体験）。
+
+**理由**:
+
+- LangGraph 等を使わず（D02）、1回の Gemini 呼び出しと薄いオーケストレーション関数
+  (`backend/app/debate.py`) で「次のキャラ選定・発言・論点更新」を一撃生成できる
+- chat_history への追記をバックエンド側で行うことで、フロントは State をそのまま置き換える
+  だけでよく、ログの整合性が保証される
+- roster 内ローテーションのフォールバックにより、Gemini が失敗・不正な人物名を返しても
+  UI が壊れず議論が必ず先に進む（D09/D10 のフェイルセーフ方針を継承）
+
+**影響範囲**:
+
+- `backend/app/models.py`: `DebateState` / `CharacterRef` / `ChatMessage` / `NextTurnLLMOutput` を追加
+- `backend/app/gemini_client.py`: `generate_next_turn` を追加（`responseSchema=NextTurnLLMOutput`）
+- `backend/app/debate.py`（新規）: `advance_turn` オーケストレーション
+- `backend/app/routes.py`: `POST /api/next_turn` を追加
+- `backend/app/config.py`: `CHAT_HISTORY_PROMPT_LIMIT` / `NEXT_TURN_TIMEOUT_SECONDS` を追加
+
+---
+
 ## 追加判断の書き方
 
 新しい判断は `D10`, `D11`, ... と連番で追加し、`判断 / 理由 / 影響範囲` を書く。

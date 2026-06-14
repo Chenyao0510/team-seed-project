@@ -85,9 +85,51 @@ function ttsCacheKey(
   return `${speaker}|${gender ?? ""}|${speech}`;
 }
 
+// hook と body から current_speech 相当の文字列を合成する
+// (backend/app/debate.py の _compose_speech と同じロジック)。
+function composeSpeech(hook: string, body: string): string {
+  return `${hook} ${body}`.trim();
+}
+
+// ユーザー介入で state を上書きする前に、画面表示中の発言を chat_history に
+// アーカイブする (backend/app/debate.py の _archive_current_speech と同じ条件)。
+// これにより、介入直前に表示されていたキャラの発言が履歴・次の AI の文脈から
+// 失われることを防ぐ。
+function archiveCurrentSpeech(state: DebateState): ChatHistoryEntry[] {
+  if (!state.current_speech || state.status !== "speaking") {
+    return state.chat_history;
+  }
+  if (
+    state.active_character === state.user.name ||
+    state.active_character === USER_SPEAKER
+  ) {
+    return state.chat_history;
+  }
+
+  const last = state.chat_history[state.chat_history.length - 1];
+  const isDuplicate =
+    last !== undefined &&
+    last.speaker === state.active_character &&
+    last.text === state.current_speech;
+  if (isDuplicate) {
+    return state.chat_history;
+  }
+
+  const character = state.characters.find(
+    (c) => c.name === state.active_character,
+  );
+  const newEntry: ChatHistoryEntry = {
+    speaker: state.active_character,
+    text: state.current_speech,
+    avatar_url: character?.avatar_url ?? "",
+    emotion: state.emotion,
+  };
+  return [...state.chat_history, newEntry];
+}
+
 // Reflection Turn (T26/T27): 何ターンごとに一時停止して Reflection Panel を表示するか。
 // turn_count は backend が `/api/next_turn` のたびに+1して返す値（ユーザー介入はカウントしない）。
-const REFLECTION_INTERVAL = 3;
+const REFLECTION_INTERVAL = 10;
 
 export function DebateStage({
   state,
@@ -161,7 +203,7 @@ export function DebateStage({
 
     for (const [name, thought] of Object.entries(thoughts)) {
       if (!thought.willingness_to_speak) continue;
-      const speech = thought.current_speech;
+      const speech = composeSpeech(thought.hook, thought.body);
       if (!speech) continue;
       const gender = state.characters.find((c) => c.name === name)?.gender;
       const key = ttsCacheKey(name, speech, gender);
@@ -197,6 +239,8 @@ export function DebateStage({
     const interventionText = `（${INTERVENTION_LABEL[kind]}）${trimmed}`;
     onIntervene?.({
       ...state,
+      // 介入で上書きする前に、画面表示中だったキャラの発言を履歴に残す。
+      chat_history: archiveCurrentSpeech(state),
       active_character: state.user.name,
       current_speech: interventionText,
       current_hook: "",

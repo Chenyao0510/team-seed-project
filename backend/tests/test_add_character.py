@@ -41,7 +41,9 @@ def test_add_character_returns_avatar_url(monkeypatch, tmp_path):
     monkeypatch.setattr(gemini_client, "classify_gender", lambda name: "male")
     # T72: generate_character_persona も呼ばれる。
     monkeypatch.setattr(
-        gemini_client, "generate_character_persona", lambda name: "天下統一を志す、果断で短気な戦国武将。"
+        gemini_client,
+        "generate_character_persona",
+        lambda name: "天下統一を志す、果断で短気な戦国武将。",
     )
 
     response = client.post("/api/add_character", json={"name": "織田信長"})

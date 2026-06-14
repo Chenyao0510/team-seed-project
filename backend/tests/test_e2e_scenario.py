@@ -69,7 +69,12 @@ def test_full_scenario_state_survives_screen0_to_screen2(monkeypatch, tmp_path):
         avatar_url = body["avatar_url"]
         assert avatar_url
         characters.append(
-            {"name": name, "avatar_url": avatar_url, "gender": body["gender"], "persona": body["persona"]}
+            {
+                "name": name,
+                "avatar_url": avatar_url,
+                "gender": body["gender"],
+                "persona": body["persona"],
+            }
         )
 
     # --- Screen 0 -> 1: buildInitialDebateState 相当の初期 State ---

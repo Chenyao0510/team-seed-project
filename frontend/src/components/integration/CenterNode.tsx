@@ -43,7 +43,7 @@ export function CenterNode({ label, delay, gridArea }: CenterNodeProps) {
           ease: 'linear',
           delay,
         }}
-        className="absolute -inset-3 rounded-full border border-dashed border-emerald-300/25"
+        className="absolute -inset-5 rounded-full border border-dashed border-emerald-300/30"
       />
       {/* 中側ハロー: 永続ブリージング */}
       <motion.div
@@ -58,8 +58,8 @@ export function CenterNode({ label, delay, gridArea }: CenterNodeProps) {
         className="absolute inset-0 rounded-full bg-emerald-300/15 blur-2xl"
       />
       {/* コア: テキストを含む円 */}
-      <div className="relative flex h-32 w-32 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400/30 to-emerald-600/20 ring-1 ring-emerald-300/40 backdrop-blur-sm">
-        <p className="relative px-3 text-center text-lg font-semibold leading-tight text-emerald-50">
+      <div className="relative flex h-44 w-44 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400/35 to-emerald-600/25 ring-2 ring-emerald-300/50 backdrop-blur-sm">
+        <p className="relative px-4 text-center text-xl font-bold leading-tight tracking-tight text-emerald-50">
           {label}
         </p>
       </div>

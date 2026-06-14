@@ -52,6 +52,44 @@ interface IntegrationMapProps {
   onBack?: () => void
 }
 
+// 黄金比スプレッドで決定論的にパーティクル位置を生成（ランダム禁止）
+const STAR_COUNT = 80
+const GOLDEN_ANGLE = 137.508
+const stars = Array.from({ length: STAR_COUNT }, (_, i) => ({
+  id: i,
+  cx: `${((i * GOLDEN_ANGLE * 1.3) % 100).toFixed(2)}%`,
+  cy: `${((i * 97.31) % 100).toFixed(2)}%`,
+  r: i % 7 === 0 ? 1.5 : i % 3 === 0 ? 1.0 : 0.6,
+  opacity: 0.2 + (i % 5) * 0.12,
+  twinkleDuration: 2.5 + (i % 6) * 0.7,
+  twinkleDelay: (i % 11) * 0.3,
+}))
+
+// スパークル: 内側に凹んだ4点星 (凹型ひし形辺)
+// SVGパス: cubic bezier の制御点を 0.15 に設定することで辺が内側に湾曲
+const SPARKLE_PATH =
+  'M 0,-1 C 0.15,-0.15 0.15,-0.15 1,0 C 0.15,0.15 0.15,0.15 0,1 C -0.15,0.15 -0.15,0.15 -1,0 C -0.15,-0.15 -0.15,-0.15 0,-1 Z'
+const SPARKLE_COLORS = [
+  'rgba(52,211,153,',   // emerald
+  'rgba(167,139,250,',  // violet
+  'rgba(251,191,36,',   // amber
+  'rgba(148,163,184,',  // slate
+  'rgba(34,211,238,',   // cyan
+] as const
+const sparkles = Array.from({ length: 20 }, (_, i) => ({
+  id: i,
+  // calc() で中心合わせ: FM の transform と干渉しない
+  left: `calc(${((i * GOLDEN_ANGLE * 2.7) % 100).toFixed(1)}% - ${6 + (i % 5) * 3}px)`,
+  top:  `calc(${((i * 61.18) % 100).toFixed(1)}% - ${6 + (i % 5) * 3}px)`,
+  size: 12 + (i % 5) * 6,  // 12 ~ 36px
+  fillOpacity: 0.75 + (i % 3) * 0.08, // 0.75 ~ 0.91 (常に見える)
+  color: SPARKLE_COLORS[i % SPARKLE_COLORS.length],
+  rotateDeg: (i % 2 === 0 ? 360 : -360), // 向き交互
+  rotateDuration: 18 + (i % 8) * 5,
+  pulseDuration: 1.8 + (i % 5) * 0.7,
+  delay: (i % 9) * 0.5,
+}))
+
 export function IntegrationMap({ state, onBack }: IntegrationMapProps) {
   const layout = getIntegrationLayout(state.structure_map.length)
   const pairs = pairCategoriesWithSlots(state.structure_map, layout)
@@ -172,11 +210,81 @@ export function IntegrationMap({ state, onBack }: IntegrationMapProps) {
   return (
     <div
       ref={scope}
-      className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100"
+      className="relative min-h-screen bg-[#04060f] text-slate-100"
     >
+      {/* ── 星空背景レイヤー ── */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+        {/* エメラルドglobブラー (右上) */}
+        <div
+          className="absolute -top-40 -right-40 h-[520px] w-[520px] rounded-full opacity-[0.13]"
+          style={{ background: 'radial-gradient(circle, #34d399 0%, transparent 68%)' }}
+        />
+        {/* インディゴglobブラー (左下) */}
+        <div
+          className="absolute -bottom-56 -left-56 h-[600px] w-[600px] rounded-full opacity-[0.10]"
+          style={{ background: 'radial-gradient(circle, #818cf8 0%, transparent 65%)' }}
+        />
+        {/* 星空パーティクル */}
+        <svg className="h-full w-full" xmlns="http://www.w3.org/2000/svg">
+          {stars.map((s) => (
+            <motion.circle
+              key={s.id}
+              cx={s.cx}
+              cy={s.cy}
+              r={s.r}
+              fill="white"
+              initial={{ opacity: s.opacity }}
+              animate={{ opacity: [s.opacity, s.opacity * 0.25, s.opacity] }}
+              transition={{
+                duration: s.twinkleDuration,
+                delay: s.twinkleDelay,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              }}
+            />
+          ))}
+        </svg>
+        {/* スパークル: 凹型4点星 — calc()で中心合わせ、FMのtransformと干渉しない */}
+        {sparkles.map((s) => (
+          <motion.div
+            key={`sparkle-${s.id}`}
+            className="pointer-events-none absolute"
+            style={{
+              left: s.left,
+              top: s.top,
+              width: s.size,
+              height: s.size,
+            }}
+            animate={{ opacity: [s.fillOpacity, 0.20, s.fillOpacity] }}
+            transition={{
+              duration: s.pulseDuration,
+              delay: s.delay,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          >
+            <svg
+              viewBox="-1.3 -1.3 2.6 2.6"
+              style={{ width: '100%', height: '100%', overflow: 'visible' }}
+            >
+              <motion.g
+                animate={{ rotate: [0, s.rotateDeg] }}
+                transition={{ duration: s.rotateDuration, repeat: Infinity, ease: 'linear' }}
+                style={{ originX: '0px', originY: '0px' }}
+              >
+                <path
+                  d={SPARKLE_PATH}
+                  fill={`${s.color}${s.fillOpacity})`}
+                  style={{ filter: `drop-shadow(0 0 5px ${s.color}1.0)` }}
+                />
+              </motion.g>
+            </svg>
+          </motion.div>
+        ))}
+      </div>
       <main
         data-testid="integration-map"
-        className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-10"
+        className="mx-auto flex max-w-6xl flex-col gap-5 px-6 py-6"
       >
         <GrowthHeader
           before={state.before_question}
@@ -187,7 +295,7 @@ export function IntegrationMap({ state, onBack }: IntegrationMapProps) {
         <section
           ref={sectionRef}
           data-testid="integration-structure"
-          className="relative mx-auto aspect-[16/10] w-full"
+          className="relative mx-auto aspect-[16/7] w-full"
         >
           <ConnectionLines
             centerPoint={layout.centerPoint}

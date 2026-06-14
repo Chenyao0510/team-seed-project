@@ -84,7 +84,7 @@ def _cache_put(key: tuple[str, int], data: bytes) -> None:
         _tts_cache.popitem(last=False)
 
 
-async def _fetch_voicevox(text: str, speaker_id: int) -> bytes:
+async def _fetch_voicevox(text: str, speaker_id: int, speed: float = 1.2) -> bytes:
     """VOICEVOX への実 HTTP 往復。キャッシュは一切見ない素の合成。"""
     async with httpx.AsyncClient() as client:
         try:
@@ -95,6 +95,8 @@ async def _fetch_voicevox(text: str, speaker_id: int) -> bytes:
             )
             query_res.raise_for_status()
             query_data = query_res.json()
+            # T73: 音声速度を調整（デフォルト1.2倍）
+            query_data["speedScale"] = speed
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Voicevox audio_query failed: {e}"
@@ -116,7 +118,7 @@ async def _fetch_voicevox(text: str, speaker_id: int) -> bytes:
     return synth_res.content
 
 
-async def _synth_cached(text: str, speaker_id: int) -> bytes:
+async def _synth_cached(text: str, speaker_id: int, speed: float = 1.2) -> bytes:
     """LRU + in-flight coalescing 付きで wav を返す。
 
     1. キャッシュ命中なら即返す
@@ -124,7 +126,8 @@ async def _synth_cached(text: str, speaker_id: int) -> bytes:
        （フロント prefetch と本番再生の二重発火を 1 回にまとめる）
     3. どちらでもなければ新規に VOICEVOX を叩く
     """
-    key = (text, speaker_id)
+    # キャッシュキーに speed を含めることで速度変更に対応
+    key = (text, speaker_id, speed)
     cached = _cache_get(key)
     if cached is not None:
         return cached
@@ -137,7 +140,7 @@ async def _synth_cached(text: str, speaker_id: int) -> bytes:
     fut: asyncio.Future[bytes] = loop.create_future()
     _inflight[key] = fut
     try:
-        wav = await _fetch_voicevox(text, speaker_id)
+        wav = await _fetch_voicevox(text, speaker_id, speed)
     except BaseException as e:
         # HTTPException も含めて、待っている他コルーチンに伝播させる
         if not fut.done():
@@ -156,7 +159,8 @@ async def generate_tts(
     text: str,
     character_name: str,
     gender: Gender | None = None,
+    speed: float = 1.2,
 ) -> Response:
     speaker_id = get_speaker_id(character_name, gender)
-    wav = await _synth_cached(text, speaker_id)
+    wav = await _synth_cached(text, speaker_id, speed)
     return Response(content=wav, media_type="audio/wav")

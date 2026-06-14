@@ -33,7 +33,7 @@
 - [x] **T5A** `[Both]`: **事前生成キャラクターテンプレートのセットアップ追加**
   - SetupScreen 右側に「テンプレートから追加」パネルを設け、オバマ / イーロン・マスク / ソクラテス等の事前生成済みアバターをクリック1回で初期メンバーに加えられるようにする。
   - 動的アバター生成パイプライン（Gemini Search + nano banana + OpenCV）を毎回回す必要が無くなり、デモ・開発時のセットアップ時間を短縮する。詳細は DECISIONS D16。
-- [ ] **T5B** `[Front]`: **立ち絵下のキャラクター名表示を削除**
+- [x] **T5B** `[Front]`: **立ち絵下のキャラクター名表示を削除**
   - 議論画面（DebateStage）でキャラクター立ち絵の下に表示されている人物名（name ラベル）を非表示にする。視覚ノイズを減らし、立ち絵そのものに視線が集まるようにする。
   - 発言中のキャラクター識別はテロップ側で行えば十分なので、立ち絵下のテキストは不要。
 
@@ -100,3 +100,7 @@
   - さらに「縦幅統一」要望を反映: 立ち絵 img を `absolute bottom-0 h-full w-auto max-w-none` に変更し、ステージの h-full で全員同じ縦サイズ、横はアスペクト比に応じた自然幅で描画。列幅 (`flex-1 min-w-0 max-w-[360px]`) より広い画像は隣にはみ出して重なる（ユーザー要望: 横重なり可）。
   - 立ち絵 PNG を bbox 自動クロップ: `backend/app/background_removal.py` で透過後 `alpha > 32` の最小外接矩形＋12px パディングにクロップ。これにより透過 PNG の余白が削れ、フロント側 `h-full w-auto` で表示したときキャラがステージを目一杯占めるようになる。`test_background_removal.py` に bbox クロップ／全透過時の現状維持ケースを追加。
   - backend テスト 30 passed、`make verify-all` グリーン。
+- 2026-06-14: ベースライン修正と T5B（立ち絵下の名前削除）。
+  - ベースライン修正: `DebateStage.tsx` の `interventionRef` を新 `react-hooks/immutability` ルール対応に変更（初期値 null + eslint-disable コメント）。`app/debate.py` の未使用 `roster_names` 削除。`gemini_client.py` の長すぎる行を折り返し。`tests/test_next_turn.py` を T63 リファクタ後の `generate_agent_thought` モック方式に書き換え（廃止予定の `NextTurnLLMOutput` への依存を解消）。
+  - T5B: `DebateStage.tsx` の `CharactersRow` から立ち絵下の名前ピル (`<p>{c.name}</p>`) を削除。発言中ステータスラベル (`STATUS_LABEL[status]`) はアクティブ時のみ表示する小さなピルに残した。ユーザー自身の列（右端円形アバター、立ち絵ではない）は対象外。
+  - backend テスト 41 passed、`make verify-all` グリーン。

@@ -54,12 +54,6 @@ const USER_AVATAR_FALLBACK = "https://placeholder.example/user.png";
 // 「ユーザー介入」として扱い、次の AI がそれに反応する: DECISIONS D11）。
 const USER_SPEAKER = "あなた";
 
-const STATUS_LABEL: Record<DebateStatus, string> = {
-  thinking: "思考中",
-  speaking: "発言中",
-  waiting: "待機中",
-};
-
 // Reflection Turn (T26/T27): 何ターンごとに一時停止して Reflection Panel を表示するか。
 // turn_count は backend が `/api/next_turn` のたびに+1して返す値（ユーザー介入はカウントしない）。
 const REFLECTION_INTERVAL = 3;
@@ -204,7 +198,6 @@ export function DebateStage({
   // think() は非同期で、await 中に intervention が変化することがあるため、
   // 完了時点で最新値を参照できるよう Ref に同期しておく
   const interventionRef = useRef<InterventionKind | null>(null);
-  // eslint-disable-next-line react-hooks/immutability
   useEffect(() => {
     // eslint-disable-next-line react-hooks/immutability
     interventionRef.current = intervention;
@@ -1020,14 +1013,7 @@ function CharactersRow({
                   <div className="absolute -bottom-4 left-1/2 w-3/4 -translate-x-1/2 h-10 bg-emerald-400/35 blur-2xl rounded-[100%]" />
                 )}
               </div>
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/85 px-4 py-1 rounded-full border border-slate-700 whitespace-nowrap">
-                <p className="text-sm font-semibold text-slate-100">{c.name}</p>
-                {active && (
-                  <span className="block text-center mt-0.5 text-[10px] text-emerald-300 uppercase tracking-wider">
-                    {STATUS_LABEL[status]}
-                  </span>
-                )}
-              </div>
+              {/* T5B: 立ち絵下のラベル（名前 / 発言中ステータス）はすべて非表示 */}
             </motion.li>
           );
         })}

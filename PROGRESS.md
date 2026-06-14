@@ -63,6 +63,8 @@
   - キャラクター追加時に Gemini で `male`/`female`/`robot` を判定し、`/api/tts` 呼び出しで性別プールから話者を選ぶ。
 - [x] **T70** `[Front]`: **TTS の先行プリフェッチ**
   - `/api/think` で willing 候補が確定したタイミングで、各候補ぶんの TTS を並列で fetch → Blob URL に変換してキャッシュ。「次へ」クリック後の通信往復ゼロで即再生。
+- [x] **T71** `[Back]`: **TTS サーバー LRU + in-flight coalescing**
+  - `/api/tts` 内部に `(text, speaker_id) → wav` の LRU (128 エントリ) を持たせ、同時到達した同一キーは 1 つの Future で共有。フロント prefetch (T70) と二段構え。詳細は DECISIONS D18。
   - 現状の T67 実装はキャラクター名のハッシュで `speaker_id` を割り当てているため、男性キャラに女声・女性キャラに男声が当たることがある。
   - キャラクター追加時に AI（Gemini）で性別カテゴリを判定し、`gender: "male" | "female" | "robot"` を State / pydantic スキーマに追加する。
   - VOICEVOX 話者プールを「男性3種類・女性3種類・ロボット1種類」のグループに分け、性別カテゴリ内でハッシュ分散して `speaker_id` を選ぶ。
@@ -103,6 +105,12 @@
   - さらに「縦幅統一」要望を反映: 立ち絵 img を `absolute bottom-0 h-full w-auto max-w-none` に変更し、ステージの h-full で全員同じ縦サイズ、横はアスペクト比に応じた自然幅で描画。列幅 (`flex-1 min-w-0 max-w-[360px]`) より広い画像は隣にはみ出して重なる（ユーザー要望: 横重なり可）。
   - 立ち絵 PNG を bbox 自動クロップ: `backend/app/background_removal.py` で透過後 `alpha > 32` の最小外接矩形＋12px パディングにクロップ。これにより透過 PNG の余白が削れ、フロント側 `h-full w-auto` で表示したときキャラがステージを目一杯占めるようになる。`test_background_removal.py` に bbox クロップ／全透過時の現状維持ケースを追加。
   - backend テスト 30 passed、`make verify-all` グリーン。
+- 2026-06-14: T71（TTS サーバー LRU + in-flight coalescing）。
+  - `backend/app/tts.py` を `_fetch_voicevox` (純粋な HTTP 往復) / `_synth_cached` (LRU + Future 共有) / `generate_tts` (Response 化) の 3 層に分離。`_TTS_CACHE_MAXSIZE = 128` の OrderedDict ベース LRU と `_inflight: dict[(text, speaker_id), Future[bytes]]` を導入。
+  - フロント T70 とは独立に動作: prefetch が間に合わない初回ターン / 介入直後でも、過去に出した発話の再再生は即返る。さらに「prefetch がまだ完了していないところに本番リクエストが届く」ケースで同じ Future を await することで VOICEVOX を 1 回しか叩かない。
+  - DECISIONS D18 を新規追加（採用しなかった代替案も記述）。`docs/ARCHITECTURE.md` の `/api/tts` 行に「LRU + coalescing」を追記。
+  - 新規テスト 7 ケース (`test_tts.py`): キャッシュ命中 / 別キー分離 / LRU 追い出し / recent access 保護 / coalescing / 失敗時 in-flight 掃除 / generate_tts ハッピーパス。`asyncio` 制御フロー（`asyncio.Event` での順序保証）でコアレッシングを検証。
+  - backend テスト 63 passed、`make verify-all` グリーン。
 - 2026-06-14: T70（TTS 先行プリフェッチ）。
   - `DebateStage.tsx` に `ttsCacheRef: Map<key, blobUrl | "pending">` を導入。`state.agent_thoughts` が更新されたタイミングで willing=true の各候補ぶん `/api/tts` を並列 fetch → `URL.createObjectURL(blob)` で Blob URL 化してキャッシュ。
   - `TelopBox` に `resolveTtsUrl(speaker, speech, gender)` 関数を props で渡し、useEffect 内で URL を解決。キャッシュ命中なら Blob URL（往復ゼロ）、未命中なら従来通り直 `/api/tts?...` URL。

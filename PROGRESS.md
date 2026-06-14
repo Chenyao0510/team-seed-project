@@ -59,7 +59,7 @@
   - フロントエンドでAI発言時 (`DebateStage.tsx` の `useEffect`) に `Audio` オブジェクトで再生するよう実装。
 - [x] **T68** `[Both]`: **APIの先行バッチ処理とオートプレイ化**
   - `/api/think` による思考フェーズのバックグラウンド実行により、発言の待ち時間を解消。「次へ」クリック時の即時レスポンスを実現。
-- [ ] **T69** `[Both]`: **TTS音声のキャラクター性別判定による話者割り当て**
+- [x] **T69** `[Both]`: **TTS音声のキャラクター性別判定による話者割り当て**
   - 現状の T67 実装はキャラクター名のハッシュで `speaker_id` を割り当てているため、男性キャラに女声・女性キャラに男声が当たることがある。
   - キャラクター追加時に AI（Gemini）で性別カテゴリを判定し、`gender: "male" | "female" | "robot"` を State / pydantic スキーマに追加する。
   - VOICEVOX 話者プールを「男性3種類・女性3種類・ロボット1種類」のグループに分け、性別カテゴリ内でハッシュ分散して `speaker_id` を選ぶ。
@@ -100,6 +100,14 @@
   - さらに「縦幅統一」要望を反映: 立ち絵 img を `absolute bottom-0 h-full w-auto max-w-none` に変更し、ステージの h-full で全員同じ縦サイズ、横はアスペクト比に応じた自然幅で描画。列幅 (`flex-1 min-w-0 max-w-[360px]`) より広い画像は隣にはみ出して重なる（ユーザー要望: 横重なり可）。
   - 立ち絵 PNG を bbox 自動クロップ: `backend/app/background_removal.py` で透過後 `alpha > 32` の最小外接矩形＋12px パディングにクロップ。これにより透過 PNG の余白が削れ、フロント側 `h-full w-auto` で表示したときキャラがステージを目一杯占めるようになる。`test_background_removal.py` に bbox クロップ／全透過時の現状維持ケースを追加。
   - backend テスト 30 passed、`make verify-all` グリーン。
+- 2026-06-14: T69（TTS 性別判定による話者プール分割）。
+  - DECISIONS D17 を新規追加（D01 `CharacterRef.gender` 拡張も併記）。`docs/ARCHITECTURE.md` の `/api/tts` 入力欄に `gender` を追記。
+  - backend: `app/models.py` に `Gender = Literal["male","female","robot"]` + `GenderClassification` Pydantic を追加。`AddCharacterResponse`, `CharacterRef`, `CharacterTemplate` に `gender` フィールドを伝播。`app/gemini_client.classify_gender` を追加（responseSchema で enum 強制 / 失敗時 'male' フォールバック）。`app/routes.py` の `/api/add_character` で `classify_gender` を呼び出し、`/api/tts` に `gender` クエリパラメータを追加。`app/tts.py` を `SPEAKER_POOLS = {male:(11,12,13), female:(2,8,46), robot:(47,)}` プール方式に書き換え、`get_speaker_id(name, gender)` が性別プール内でハッシュ分散。`gender=None` は全プール総和フォールバック（旧 State 互換）。`app/character_templates.py` の `_TEMPLATE_CATALOG` を `(slug, name, gender)` に拡張。
+  - frontend: `types/state.ts` に `Gender` を追加し `Character.gender?` を持たせる。`api/client.ts` の `AddCharacterResponse` / `CharacterTemplate` に `gender`。`SetupScreen.tsx` の `SetupMember.gender?`、`addCharacter` 後と `addMemberByTemplate` で gender を保持。`lib/buildDebateState.ts` で State に伝播。`DebateStage.tsx` の `TelopBox` に `characters` を渡し、TTS URL に `&gender=...` を付与（発言者の gender を State から逆引き）。
+  - fixtures: `debate_state_sample.json` の Jobs / Socrates に `gender: "male"` を追加。
+  - 新規テスト: `backend/tests/test_tts.py`（6ケース: ユーザー固定 / 各プール選択 / 決定性 / フォールバック / プール一意性）、`backend/tests/test_classify_gender.py`（6ケース: 各 gender / 例外 / 空 / 不正 JSON フォールバック）。既存 `test_add_character.py` / `test_character_templates.py` / `test_e2e_scenario.py` を gender 検証で更新。
+  - VOICEVOX 話者選定: 男性 玄野武宏(11) / 白上虎太郎(12) / 青山龍星(13)、女性 四国めたん(2) / 春日部つむぎ(8) / 小夜/SAYO(46)、ロボット ナースロボ_タイプT(47)。
+  - backend テスト 56 passed、`make verify-all` グリーン。
 - 2026-06-14: ベースライン修正と T5B（立ち絵下の名前削除）。
   - ベースライン修正: `DebateStage.tsx` の `interventionRef` を新 `react-hooks/immutability` ルール対応に変更（初期値 null + eslint-disable コメント）。`app/debate.py` の未使用 `roster_names` 削除。`gemini_client.py` の長すぎる行を折り返し。`tests/test_next_turn.py` を T63 リファクタ後の `generate_agent_thought` モック方式に書き換え（廃止予定の `NextTurnLLMOutput` への依存を解消）。
   - T5B: `DebateStage.tsx` の `CharactersRow` から立ち絵下の名前ピル (`<p>{c.name}</p>`) を削除。発言中ステータスラベル (`STATUS_LABEL[status]`) はアクティブ時のみ表示する小さなピルに残した。ユーザー自身の列（右端円形アバター、立ち絵ではない）は対象外。

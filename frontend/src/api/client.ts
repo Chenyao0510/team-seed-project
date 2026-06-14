@@ -3,18 +3,21 @@
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
+import type { DebateState, Gender, IntegrationState, ReflectionSummary } from '../types/state'
+
 export interface AddCharacterResponse {
   avatar_url: string
+  // T69: TTS 話者プール選択に使う。
+  gender: Gender
 }
 
-// 事前生成キャラクターテンプレート (T5A / D16)。
+// 事前生成キャラクターテンプレート (T5A / D16, T69)。
 export interface CharacterTemplate {
   slug: string
   name: string
   avatar_url: string
+  gender: Gender
 }
-
-import type { DebateState, IntegrationState, ReflectionSummary } from '../types/state'
 
 export async function getCharacterTemplates(): Promise<CharacterTemplate[]> {
   const response = await fetch(`${API_BASE_URL}/api/character_templates`)

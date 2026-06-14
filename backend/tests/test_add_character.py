@@ -37,6 +37,8 @@ def test_add_character_returns_avatar_url(monkeypatch, tmp_path):
         "generate_avatar_image",
         lambda name, reference_images=None: _fake_chroma_image_bytes(),
     )
+    # T69: classify_gender も同じ add_character フローで呼ばれる。実 Gemini を回さない。
+    monkeypatch.setattr(gemini_client, "classify_gender", lambda name: "male")
 
     response = client.post("/api/add_character", json={"name": "織田信長"})
 
@@ -44,6 +46,8 @@ def test_add_character_returns_avatar_url(monkeypatch, tmp_path):
     body = response.json()
     assert body["avatar_url"].startswith(f"{PUBLIC_BASE_URL}/static/avatars/")
     assert body["avatar_url"].endswith(".png")
+    # T69: gender がレスポンスに乗ること
+    assert body["gender"] == "male"
 
     saved_files = list(tmp_path.glob("*.png"))
     assert len(saved_files) == 1
@@ -69,6 +73,7 @@ def test_add_character_passes_reference_images_to_gemini(monkeypatch, tmp_path):
         return _fake_chroma_image_bytes()
 
     monkeypatch.setattr(gemini_client, "generate_avatar_image", _capture)
+    monkeypatch.setattr(gemini_client, "classify_gender", lambda name: "male")
 
     response = client.post("/api/add_character", json={"name": "Some Person"})
 
@@ -88,6 +93,7 @@ def test_add_character_falls_back_to_placeholder_on_gemini_failure(monkeypatch, 
         raise RuntimeError("gemini unavailable")
 
     monkeypatch.setattr(gemini_client, "generate_avatar_image", _raise)
+    monkeypatch.setattr(gemini_client, "classify_gender", lambda name: "male")
 
     response = client.post("/api/add_character", json={"name": "プレースホルダー太郎"})
 

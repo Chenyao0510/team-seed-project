@@ -56,14 +56,19 @@ def test_full_scenario_state_survives_screen0_to_screen2(monkeypatch, tmp_path):
         "generate_avatar_image",
         lambda name, reference_images=None: _fake_chroma_image_bytes(),
     )
+    # T69: classify_gender も add_character フローで呼ばれる。テストでは固定値を返す。
+    monkeypatch.setattr(gemini_client, "classify_gender", lambda name: "male")
 
     characters = []
     for name in roster_names:
         response = client.post("/api/add_character", json={"name": name})
         assert response.status_code == 200
-        avatar_url = response.json()["avatar_url"]
+        body = response.json()
+        avatar_url = body["avatar_url"]
         assert avatar_url
-        characters.append({"name": name, "avatar_url": avatar_url})
+        characters.append(
+            {"name": name, "avatar_url": avatar_url, "gender": body["gender"]}
+        )
 
     # --- Screen 0 -> 1: buildInitialDebateState 相当の初期 State ---
     debate_state = {

@@ -303,6 +303,7 @@ export function DebateStage({
                   onSubmit={(text) => submitIntervention(intervention!, text)}
                   userName={state.user.name}
                   agentThoughts={state.agent_thoughts}
+                  characters={state.characters}
                 />
                 {/* 進行ボタンをテロップ横か下に配置 */}
                 <div className="mx-auto mt-4 flex max-w-3xl justify-end">
@@ -1068,6 +1069,8 @@ interface TelopBoxProps {
   onSubmit: (text: string) => void;
   userName?: string;
   agentThoughts?: Record<string, AgentThought>;
+  // T69: TTS の話者プール選択用に発言者の gender を解決するため。
+  characters: Character[];
 }
 
 function TelopBox({
@@ -1079,6 +1082,7 @@ function TelopBox({
   onSubmit,
   userName = "あなた",
   agentThoughts,
+  characters,
 }: TelopBoxProps) {
   const empty = speech.trim().length === 0;
   const [draft, setDraft] = useState("");
@@ -1097,7 +1101,10 @@ function TelopBox({
 
     // AIの発言かつ発言が存在する場合のみ自動再生を試みる
     if (!empty && speaker && speaker !== USER_SPEAKER && speaker !== userName) {
-      const url = `${API_BASE_URL}/api/tts?text=${encodeURIComponent(speech)}&character_name=${encodeURIComponent(speaker)}`;
+      // T69: 発言者の gender を URL に付与して性別プールから話者を選んでもらう。
+      const gender = characters.find((c) => c.name === speaker)?.gender;
+      const genderQuery = gender ? `&gender=${gender}` : "";
+      const url = `${API_BASE_URL}/api/tts?text=${encodeURIComponent(speech)}&character_name=${encodeURIComponent(speaker)}${genderQuery}`;
       const audio = new Audio(url);
       audioRef.current = audio;
 
@@ -1121,7 +1128,7 @@ function TelopBox({
         audioRef.current = null;
       }
     };
-  }, [speech, speaker, userName, empty]);
+  }, [speech, speaker, userName, empty, characters]);
 
   const handlePlayClick = () => {
     if (audioRef.current) {

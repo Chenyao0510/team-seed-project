@@ -12,6 +12,11 @@ from pydantic import BaseModel, Field
 
 DebateStatus = Literal["thinking", "speaking", "waiting"]
 
+# T69 / D17: TTS 話者プールを切り替えるための性別カテゴリ。
+# Gemini 判定 (`classify_gender`) は通常 male/female を返すが、ドラえもん等
+# 明らかな非人間キャラには robot を返す。
+Gender = Literal["male", "female", "robot"]
+
 
 class AddCharacterRequest(BaseModel):
     name: str = Field(min_length=1)
@@ -19,11 +24,25 @@ class AddCharacterRequest(BaseModel):
 
 class AddCharacterResponse(BaseModel):
     avatar_url: str
+    gender: Gender
+
+
+class GenderClassification(BaseModel):
+    """`classify_gender` の Gemini responseSchema 用ラッパー。
+
+    Gemini Structured Outputs はトップレベルで Literal 単体を受けないため、
+    `gender` フィールド 1 つだけ持つ BaseModel として渡す。
+    """
+
+    gender: Gender
 
 
 class CharacterRef(BaseModel):
     name: str
     avatar_url: str
+    # T69: TTS で性別プールから話者を選ぶ。後方互換のため None 許容
+    # （未指定の古い State は tts.py 側で名前ハッシュ・フォールバックに回す）。
+    gender: Gender | None = None
 
 
 class ChatMessage(BaseModel):

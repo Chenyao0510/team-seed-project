@@ -13,11 +13,13 @@
   "characters": [
     {
       "name": "Jobs",
-      "avatar_url": "https://placeholder.example/jobs.png"
+      "avatar_url": "https://placeholder.example/jobs.png",
+      "gender": "male"
     },
     {
       "name": "Socrates",
-      "avatar_url": "https://placeholder.example/socrates.png"
+      "avatar_url": "https://placeholder.example/socrates.png",
+      "gender": "male"
     }
   ],
   "chat_history": [

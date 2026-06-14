@@ -479,7 +479,7 @@ function ReflectionPanel({
                     <img
                       src={c.avatar_url}
                       alt=""
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-cover object-top"
                     />
                   </div>
                   <span className="mt-1 text-xs text-slate-300">{c.name}</span>
@@ -598,7 +598,7 @@ function StanceChip({ stance, characters, reverse }: StanceChipProps) {
                   <img
                     src={character.avatar_url}
                     alt={name}
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-cover object-top"
                   />
                 )}
               </li>
@@ -622,7 +622,7 @@ function ChatHistoryItem({ entry }: { entry: ChatHistoryEntry }) {
         <img
           src={entry.avatar_url}
           alt=""
-          className="h-full w-full object-cover"
+          className="h-full w-full object-cover object-top"
         />
       </div>
       <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
@@ -1043,7 +1043,7 @@ function CharactersRow({
           <img
             src={userAvatarUrl}
             alt=""
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover object-top"
           />
         </div>
         <div

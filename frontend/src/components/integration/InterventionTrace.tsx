@@ -41,7 +41,7 @@ export function InterventionTrace({
       </span>
       <p
         data-testid="integration-catalyst"
-        className="text-sm font-medium text-amber-200"
+        className="text-base font-bold text-amber-200"
       >
         あなたの介入「{userCatalyst}」
       </p>

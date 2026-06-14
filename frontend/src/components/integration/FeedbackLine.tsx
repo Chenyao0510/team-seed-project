@@ -15,7 +15,7 @@ export function FeedbackLine({ praise, delay }: FeedbackLineProps) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: FADE_DURATION_SECONDS, delay, ease: 'easeOut' }}
-      className="mx-auto max-w-3xl text-center text-sm leading-relaxed text-emerald-100/90"
+      className="mx-auto w-full max-w-3xl text-center text-base font-semibold leading-relaxed text-emerald-100"
     >
       {praise}
     </motion.p>

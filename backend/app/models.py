@@ -90,7 +90,8 @@ class AgentThoughtOutput(BaseModel):
         ),
     )
     focus_point: str = Field(
-        default="", description="深掘り/反論/明確化/接続の対象に選んだ既存論点（完全一致）。新規論点時は空"
+        default="",
+        description="深掘り/反論/明確化/接続の対象に選んだ既存論点（完全一致）。新規論点時は空",
     )
     move_type: Literal["deepen", "challenge", "clarify", "connect", "new"] = Field(
         default="deepen",
@@ -103,7 +104,7 @@ class AgentThoughtOutput(BaseModel):
         ),
     )
     hook: str = Field(description="最初に表示する短い反応の一句（〜15文字）")
-    body: str = Field(description="hook に続く主張本体。hook+body 合計60文字以内")
+    body: str = Field(description="hook に続く主張本体。hook+body 合計80文字以内")
     concepts: list[str] = Field(default_factory=list, description="body 内の強調語を1〜2個")
     current_points: list[str]
     current_topic: str

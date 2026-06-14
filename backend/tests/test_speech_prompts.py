@@ -16,11 +16,11 @@ def test_agent_thought_prompt_includes_persona_for_the_speaking_character():
 
     jobs_persona = next(c.persona for c in state.characters if c.name == "Jobs")
     assert jobs_persona in prompt
-    # hook/body 構造化 + 60文字制約 + 反応ルール (T69 / D18)
+    # hook/body 構造化 + 80文字制約 + 反応ルール (T69 / D18)
     assert "hook" in prompt
     assert "body" in prompt
     assert "reasoning_target" in prompt
-    assert "60文字" in prompt
+    assert "80文字" in prompt
     assert "問いかけ" in prompt
     # 経歴・専門領域に根ざした具体例を求める追補ルール (T69 follow-up)
     assert "専門領域に根ざした具体例" in prompt
@@ -47,4 +47,4 @@ def test_next_turn_prompt_includes_persona_listing_and_speech_rules():
         if character.persona:
             assert character.persona in prompt
     assert "hook" in prompt
-    assert "60文字" in prompt
+    assert "80文字" in prompt

@@ -1,4 +1,4 @@
-# AI × Growth Hackathon: "Insight Navigator" Project Context
+# AI × Growth Hackathon: "Agora" Project Context
 
 ## 1. Project Overview
 本プロジェクトは、「AIに答えを代行させる」のではなく「AI同士の議論に人間が介入し、複雑な事象、問いの『構造』を理解して視座を高める（Growth）」ためのWebアプリケーションである。

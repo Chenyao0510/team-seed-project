@@ -281,7 +281,7 @@ function TempleHeader() {
           textShadow: '0 2px 18px rgba(201,169,110,0.22)',
         }}
       >
-        INSIGHT&nbsp;NAVIGATOR
+        AGORA
       </h1>
       <p
         className="mt-3 text-xs sm:text-sm"

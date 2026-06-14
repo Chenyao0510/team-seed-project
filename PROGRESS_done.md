@@ -30,7 +30,7 @@
 
 ## 3. 既知の問題
 - frontend に vitest 未導入（`make test` は backend のみ実行）
-- `frontend/index.html` の `<title>` が `frontend` のまま（後続で `Insight Navigator` に変更）
+- `frontend/index.html` の `<title>` が `frontend` のまま（後続で `Agora` に変更）
 
 ### 並行作業の準備物（完了済）
 - `fixtures/` にフロント・バック共有の State JSON サンプル配置

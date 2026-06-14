@@ -607,6 +607,8 @@ export function DebateStage({
           onSelectIntervention={handleReflectionIntervention}
         />
       )}
+
+      <CouncilGateOpening />
     </div>
   );
 }
@@ -1972,6 +1974,100 @@ function AddCharacterModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// SetupScreen の門の閉門演出と連続する「議会の幕開け」。
+// マウント時に SetupScreen と同色の紺色パネルが画面を覆った状態で立ち上がり、
+// 左右に開いて DebateStage を露わにする。完了後はノードを破棄して操作を妨げない。
+const COUNCIL_GATE_OPEN_SECONDS = 1.1;
+// マウント直後の「閉じた門」を視認できる長さ保持する（DebateStage の初描画チラつきも吸収）。
+const COUNCIL_GATE_HOLD_MS = 280;
+const COUNCIL_GATE_OPEN_EASE = [0.55, 0, 0.2, 1] as const;
+const COUNCIL_GATE_DEEP_BLUE = "#1a2742";
+const COUNCIL_GATE_DEEP_BLUE_DARK = "#0a1428";
+const COUNCIL_GATE_GOLD = "#c9a96e";
+
+function CouncilGateOpening() {
+  const [mounted, setMounted] = useState(true);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    // 閉じた門を一定時間ホールド → 開門 → 開門完了後にノード破棄。
+    // onAnimationComplete を使うと「initial==animate」の no-op 時にも即発火し、
+    // mounted が即時 false になってしまうので setTimeout で明示的に管理する。
+    const openTimer = window.setTimeout(
+      () => setOpen(true),
+      COUNCIL_GATE_HOLD_MS,
+    );
+    const unmountTimer = window.setTimeout(
+      () => setMounted(false),
+      COUNCIL_GATE_HOLD_MS + COUNCIL_GATE_OPEN_SECONDS * 1000,
+    );
+    return () => {
+      window.clearTimeout(openTimer);
+      window.clearTimeout(unmountTimer);
+    };
+  }, []);
+  if (!mounted) return null;
+  return (
+    <div className="pointer-events-none fixed inset-0 z-[80]">
+      <motion.div
+        initial={{ x: 0 }}
+        animate={{ x: open ? "-101%" : 0 }}
+        transition={{
+          duration: COUNCIL_GATE_OPEN_SECONDS,
+          ease: COUNCIL_GATE_OPEN_EASE,
+        }}
+        className="absolute inset-y-0 left-0 w-1/2"
+        style={{
+          background: `linear-gradient(135deg, ${COUNCIL_GATE_DEEP_BLUE} 0%, ${COUNCIL_GATE_DEEP_BLUE_DARK} 80%)`,
+          boxShadow: "inset -24px 0 36px -16px rgba(0,0,0,0.55)",
+        }}
+      >
+        <div
+          className="absolute right-0 top-0 h-full w-px"
+          style={{
+            background: `linear-gradient(to bottom, transparent, ${COUNCIL_GATE_GOLD} 30%, ${COUNCIL_GATE_GOLD} 70%, transparent)`,
+            boxShadow: `0 0 22px ${COUNCIL_GATE_GOLD}, 0 0 60px rgba(201,169,110,0.55)`,
+          }}
+        />
+      </motion.div>
+      <motion.div
+        initial={{ x: 0 }}
+        animate={{ x: open ? "101%" : 0 }}
+        transition={{
+          duration: COUNCIL_GATE_OPEN_SECONDS,
+          ease: COUNCIL_GATE_OPEN_EASE,
+        }}
+        className="absolute inset-y-0 right-0 w-1/2"
+        style={{
+          background: `linear-gradient(225deg, ${COUNCIL_GATE_DEEP_BLUE} 0%, ${COUNCIL_GATE_DEEP_BLUE_DARK} 80%)`,
+          boxShadow: "inset 24px 0 36px -16px rgba(0,0,0,0.55)",
+        }}
+      >
+        <div
+          className="absolute left-0 top-0 h-full w-px"
+          style={{
+            background: `linear-gradient(to bottom, transparent, ${COUNCIL_GATE_GOLD} 30%, ${COUNCIL_GATE_GOLD} 70%, transparent)`,
+            boxShadow: `0 0 22px ${COUNCIL_GATE_GOLD}, 0 0 60px rgba(201,169,110,0.55)`,
+          }}
+        />
+      </motion.div>
+      {/* 中央の金光フラッシュ: 開門の瞬間に光が漏れる */}
+      <motion.div
+        initial={{ opacity: 0.55 }}
+        animate={{ opacity: 0 }}
+        transition={{
+          duration: COUNCIL_GATE_OPEN_SECONDS * 0.7,
+          ease: "easeOut",
+        }}
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(circle at center, rgba(255,222,138,0.55) 0%, transparent 55%)",
+        }}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-# team-seed-project (Insight Navigator)
+# team-seed-project (Agora)
 
 AI 同士の議論を観察・介入することで「答え」ではなく「問いの構造と進化」を持ち帰らせる Web アプリ。
 

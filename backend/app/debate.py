@@ -46,6 +46,8 @@ def generate_thoughts(state: DebateState) -> DebateState:
         current_body="",
         current_reasoning_target="",
         current_concepts=[],
+        current_focus_point="",
+        current_move_type="",
         current_points=state.current_points,
         characters=state.characters,
         chat_history=chat_history,
@@ -99,6 +101,8 @@ def advance_turn(state: DebateState) -> DebateState:
         body = chosen_thought.body
         reasoning_target = chosen_thought.reasoning_target
         concepts = chosen_thought.concepts
+        focus_point = chosen_thought.focus_point
+        move_type = chosen_thought.move_type
         current_points = chosen_thought.current_points
         current_topic = chosen_thought.current_topic
         emotion = chosen_thought.emotion
@@ -107,6 +111,8 @@ def advance_turn(state: DebateState) -> DebateState:
         body = f"{next_character}が話を引き継ぎます。"
         reasoning_target = ""
         concepts = []
+        focus_point = ""
+        move_type = ""
         current_points = state.current_points
         current_topic = state.current_topic
         emotion = "neutral"
@@ -121,6 +127,8 @@ def advance_turn(state: DebateState) -> DebateState:
         current_body=body,
         current_reasoning_target=reasoning_target,
         current_concepts=concepts,
+        current_focus_point=focus_point,
+        current_move_type=move_type,
         emotion=emotion,
         current_points=current_points,
         characters=state.characters,

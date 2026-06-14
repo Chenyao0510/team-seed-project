@@ -23,6 +23,8 @@ export interface AgentThought {
   body: string;
   reasoning_target: string;
   concepts: string[];
+  focus_point: string;
+  move_type: string;
   current_points: string[];
   current_topic: string;
   emotion: string;
@@ -47,6 +49,8 @@ export interface DebateState {
   current_body?: string;
   current_reasoning_target?: string;
   current_concepts?: string[];
+  current_focus_point?: string;
+  current_move_type?: string;
   emotion: string;
   current_points: string[];
   characters: Character[];

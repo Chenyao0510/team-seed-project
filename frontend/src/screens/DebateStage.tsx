@@ -1023,7 +1023,7 @@ function CharactersRow({
       <div
         data-testid="stage-user"
         className={[
-          "flex flex-col items-center relative z-20 shrink-0 ml-2 mb-4 transition-all duration-300 ease-out",
+          "flex flex-col items-center relative z-20 shrink-0 ml-2 mb-44 transition-all duration-300 ease-out",
           isUserActive ? "scale-105" : "scale-95 opacity-80",
         ].join(" ")}
       >

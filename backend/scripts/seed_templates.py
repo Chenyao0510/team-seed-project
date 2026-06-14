@@ -59,7 +59,7 @@ def main() -> int:
     skipped: list[str] = []
     failed: list[tuple[str, str]] = []
 
-    for slug, name in all_template_specs():
+    for slug, name, _persona in all_template_specs():
         out_path = TEMPLATES_DIR / f"{slug}.png"
         if args.skip_existing and out_path.is_file():
             print(f"[SKIP] {slug} ({name}) - already exists")

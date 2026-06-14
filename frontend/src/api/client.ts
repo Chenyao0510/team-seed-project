@@ -5,6 +5,7 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localho
 
 export interface AddCharacterResponse {
   avatar_url: string
+  persona: string
 }
 
 // 事前生成キャラクターテンプレート (T5A / D16)。
@@ -12,6 +13,7 @@ export interface CharacterTemplate {
   slug: string
   name: string
   avatar_url: string
+  persona: string
 }
 
 import type { DebateState, IntegrationState, ReflectionSummary } from '../types/state'

@@ -17,7 +17,10 @@ def test_next_turn_advances_turn(monkeypatch):
             return AgentThoughtOutput(
                 willingness_to_speak=True,
                 thought="思考プロセス：シンプルさが重要",
-                current_speech="シンプルさこそが最高の洗練だ。大学のカリキュラムも削ぎ落とすべきだ。",
+                hook="それは逆だ。",
+                body="カリキュラムを削ぎ落とせば、学びはもっと洗練される。",
+                reasoning_target="Socrates: 学ぶ場を持っていたのでは",
+                concepts=["洗練"],
                 current_points=["スキルの陳腐化速度", "偶発的な人脈形成", "シンプルさの価値"],
                 current_topic="教育におけるシンプルさ",
             )
@@ -25,7 +28,8 @@ def test_next_turn_advances_turn(monkeypatch):
             return AgentThoughtOutput(
                 willingness_to_speak=False,
                 thought="思考プロセス：見守り",
-                current_speech="私は見守るよ",
+                hook="",
+                body="私は見守るよ",
                 current_points=s.current_points,
                 current_topic=s.current_topic,
             )
@@ -42,8 +46,13 @@ def test_next_turn_advances_turn(monkeypatch):
     assert body["status"] == "speaking"
     assert body["active_character"] == "Jobs"
     assert body["active_character"] in roster_names
+    # hook/body が State に乗り、current_speech は両者の合成になる
+    assert body["current_hook"] == "それは逆だ。"
+    assert body["current_body"] == "カリキュラムを削ぎ落とせば、学びはもっと洗練される。"
+    assert body["current_reasoning_target"] == "Socrates: 学ぶ場を持っていたのでは"
+    assert body["current_concepts"] == ["洗練"]
     assert body["current_speech"] == (
-        "シンプルさこそが最高の洗練だ。大学のカリキュラムも削ぎ落とすべきだ。"
+        "それは逆だ。 カリキュラムを削ぎ落とせば、学びはもっと洗練される。"
     )
     assert body["current_points"] == ["スキルの陳腐化速度", "偶発的な人脈形成", "シンプルさの価値"]
     assert body["current_topic"] == "教育におけるシンプルさ"
@@ -67,7 +76,8 @@ def test_think_generates_candidates(monkeypatch):
         return AgentThoughtOutput(
             willingness_to_speak=(name == "Jobs"),
             thought=f"{name}の思考",
-            current_speech=f"{name}の発言",
+            hook=f"{name}の一言",
+            body=f"{name}の発言",
             current_points=s.current_points,
             current_topic=s.current_topic,
         )
@@ -102,14 +112,16 @@ def test_next_turn_uses_precomputed_thoughts(monkeypatch):
         "Jobs": {
             "willingness_to_speak": True,
             "thought": "ジョブズの思考",
-            "current_speech": "ジョブズの発言",
+            "hook": "ジョブズの一言",
+            "body": "ジョブズの発言",
             "current_points": state["current_points"],
             "current_topic": state["current_topic"],
         },
         "Socrates": {
             "willingness_to_speak": False,
             "thought": "ソクラテスの思考",
-            "current_speech": "ソクラテスの発言",
+            "hook": "",
+            "body": "ソクラテスの発言",
             "current_points": state["current_points"],
             "current_topic": state["current_topic"],
         }
@@ -125,7 +137,9 @@ def test_next_turn_uses_precomputed_thoughts(monkeypatch):
     body = response.json()
 
     assert body["active_character"] == "Jobs"
-    assert body["current_speech"] == "ジョブズの発言"
+    assert body["current_hook"] == "ジョブズの一言"
+    assert body["current_body"] == "ジョブズの発言"
+    assert body["current_speech"] == "ジョブズの一言 ジョブズの発言"
     assert body["status"] == "speaking"
     assert body["turn_count"] == state["turn_count"] + 1
 
@@ -156,14 +170,19 @@ def test_next_turn_falls_back_on_gemini_failure(monkeypatch):
 def test_next_turn_propagates_emotion_from_llm_output(monkeypatch):
     """LLM が返した emotion を新 State と chat_history (前ターン分) に伝播する。"""
     state = load_debate_state()
-    fake_output = NextTurnLLMOutput(
-        active_character="Jobs",
-        current_speech="やってみればわかる。",
-        emotion="confident",
-        current_points=state["current_points"],
-        current_topic=state["current_topic"],
-    )
-    monkeypatch.setattr(gemini_client, "generate_next_turn", lambda s: fake_output)
+
+    def mock_generate_agent_thought(s, name):
+        return AgentThoughtOutput(
+            willingness_to_speak=(name == "Jobs"),
+            thought="思考",
+            hook="やってみろ。",
+            body="議論より試作が早い。",
+            emotion="confident",
+            current_points=s.current_points,
+            current_topic=s.current_topic,
+        )
+
+    monkeypatch.setattr(gemini_client, "generate_agent_thought", mock_generate_agent_thought)
 
     response = client.post("/api/next_turn", json=state)
     assert response.status_code == 200
@@ -183,7 +202,7 @@ def test_next_turn_falls_back_to_neutral_emotion_on_failure(monkeypatch):
     def _raise(*args, **kwargs):
         raise RuntimeError("gemini unavailable")
 
-    monkeypatch.setattr(gemini_client, "generate_next_turn", _raise)
+    monkeypatch.setattr(gemini_client, "generate_agent_thought", _raise)
     response = client.post("/api/next_turn", json=state)
     assert response.status_code == 200
     assert response.json()["emotion"] == "neutral"
@@ -207,7 +226,8 @@ def test_next_turn_archives_user_intervention_with_user_avatar(monkeypatch):
         return AgentThoughtOutput(
             willingness_to_speak=(name == "Jobs"),
             thought="思考プロセス",
-            current_speech="発言",
+            hook="待った。",
+            body="発言",
             current_points=s.current_points,
             current_topic=s.current_topic,
         )
@@ -236,7 +256,8 @@ def test_next_turn_defaults_user_when_omitted(monkeypatch):
         return AgentThoughtOutput(
             willingness_to_speak=(name == "Jobs"),
             thought="思考プロセス",
-            current_speech="続けよう。",
+            hook="続けよう。",
+            body="この論点を詰めたい。",
             current_points=s.current_points,
             current_topic=s.current_topic,
         )

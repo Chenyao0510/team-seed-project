@@ -5,6 +5,7 @@ import { CharacterTemplatePanel } from '../components/setup/CharacterTemplatePan
 export interface SetupMember {
   name: string
   avatarUrl: string | null
+  persona?: string
 }
 
 export interface SetupResult {
@@ -43,9 +44,9 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
 
     setLoadingMembers((prev) => new Set(prev).add(name))
     addCharacter(name)
-      .then(({ avatar_url }) => {
+      .then(({ avatar_url, persona }) => {
         setMembers((prev) =>
-          prev.map((m) => (m.name === name ? { ...m, avatarUrl: avatar_url } : m)),
+          prev.map((m) => (m.name === name ? { ...m, avatarUrl: avatar_url, persona } : m)),
         )
       })
       .catch(() => {
@@ -70,7 +71,7 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
     if (members.some((m) => m.name === template.name)) return
     setMembers((prev) => [
       ...prev,
-      { name: template.name, avatarUrl: template.avatar_url },
+      { name: template.name, avatarUrl: template.avatar_url, persona: template.persona },
     ])
   }
 

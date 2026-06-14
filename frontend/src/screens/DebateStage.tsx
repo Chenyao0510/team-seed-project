@@ -15,6 +15,7 @@ import {
   think,
   API_BASE_URL,
 } from "../api/client";
+import { Typewriter } from "../components/debate/Typewriter";
 
 // PointsPanel (T33) のアニメーション秒数（CONSTRAINTS.md: マジックナンバー禁止）。
 // 1ターンで「追加=最大1 / 入れ替え=最大1」を Gemini 側で強制し (D11 prompt)、
@@ -97,10 +98,15 @@ export function DebateStage({
   const submitIntervention = (kind: InterventionKind, text: string) => {
     const trimmed = text.trim();
     if (trimmed.length === 0) return;
+    const interventionText = `（${INTERVENTION_LABEL[kind]}）${trimmed}`;
     onIntervene?.({
       ...state,
       active_character: state.user.name,
-      current_speech: `（${INTERVENTION_LABEL[kind]}）${trimmed}`,
+      current_speech: interventionText,
+      current_hook: "",
+      current_body: interventionText,
+      current_reasoning_target: "",
+      current_concepts: [],
       status: "speaking",
       agent_thoughts: {},
     });
@@ -300,6 +306,10 @@ export function DebateStage({
                 <TelopBox
                   speaker={state.active_character}
                   speech={state.current_speech}
+                  hook={state.current_hook}
+                  body={state.current_body}
+                  reasoningTarget={state.current_reasoning_target}
+                  concepts={state.current_concepts}
                   status={isGenerating ? "thinking" : state.status}
                   intervention={intervention}
                   onCancel={() => setIntervention(null)}
@@ -1072,6 +1082,10 @@ function CharactersRow({
 interface TelopBoxProps {
   speaker: string;
   speech: string;
+  hook?: string;
+  body?: string;
+  reasoningTarget?: string;
+  concepts?: string[];
   status: DebateStatus;
   intervention: InterventionKind | null;
   onCancel: () => void;
@@ -1083,6 +1097,10 @@ interface TelopBoxProps {
 function TelopBox({
   speaker,
   speech,
+  hook = "",
+  body = "",
+  reasoningTarget = "",
+  concepts = [],
   status,
   intervention,
   onCancel,
@@ -1305,12 +1323,39 @@ function TelopBox({
               </button>
             )}
           </div>
-          <p
-            data-testid="telop-speech"
-            className="text-lg leading-relaxed text-slate-100"
-          >
-            {speech}
-          </p>
+          {/* hook/body 構造があればタイプライター演出、無ければ speech を平文表示 (D18) */}
+          {hook || body ? (
+            <div data-testid="telop-speech" className="flex flex-col gap-1">
+              {reasoningTarget && (
+                <p
+                  data-testid="telop-reasoning"
+                  className="text-xs font-medium text-amber-300/80"
+                >
+                  → {reasoningTarget} へ
+                </p>
+              )}
+              {hook && (
+                <p className="text-lg font-semibold leading-relaxed text-slate-50">
+                  {hook}
+                </p>
+              )}
+              {body && (
+                <Typewriter
+                  key={`${speaker}:${hook}:${body}`}
+                  text={body}
+                  concepts={concepts}
+                  className="text-lg leading-relaxed text-slate-100"
+                />
+              )}
+            </div>
+          ) : (
+            <p
+              data-testid="telop-speech"
+              className="text-lg leading-relaxed text-slate-100"
+            >
+              {speech}
+            </p>
+          )}
         </>
       )}
     </section>

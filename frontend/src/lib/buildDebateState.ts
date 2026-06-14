@@ -15,11 +15,16 @@ export function buildInitialDebateState(setup: SetupResult): DebateState {
     active_character: '',
     status: 'waiting',
     current_speech: '',
+    current_hook: '',
+    current_body: '',
+    current_reasoning_target: '',
+    current_concepts: [],
     emotion: 'neutral',
     current_points: [],
-    characters: setup.members.map(({ name, avatarUrl }) => ({
+    characters: setup.members.map(({ name, avatarUrl, persona }) => ({
       name,
       avatar_url: avatarUrl ?? FALLBACK_AVATAR_URL,
+      persona: persona ?? '',
     })),
     chat_history: [],
     turn_count: 0,

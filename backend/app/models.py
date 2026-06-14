@@ -79,14 +79,32 @@ class AgentThoughtOutput(BaseModel):
 
     willingness_to_speak: bool
     thought: str = Field(description="発言に至るまでの思考プロセス")
-    hook: str = Field(description="最初に表示する短い反応の一句（〜15文字）")
-    body: str = Field(description="hook に続く主張本体。hook+body 合計60文字以内")
-    reasoning_target: str = Field(default="", description="反応した相手（話者名＋要点）")
-    concepts: list[str] = Field(default_factory=list, description="body 内の強調語を1〜2個")
+    # 発言文 (hook/body) より前に reasoning_target / focus_point / move_type を
+    # 確定させる。直前の発言の「核心的主張」とそれへの関与方法を先に決めてから
+    # 発言文を組み立てる、という生成順序をスキーマの並び順で誘導する。
+    reasoning_target: str = Field(
+        default="",
+        description=(
+            "直前の発言者の発言を、単なる話題の要約ではなく「話者名: 検証可能な主張」"
+            "の形で一文に特定したもの。これが今回の発言が留まるべき枠（フレーム）になる。"
+        ),
+    )
     focus_point: str = Field(
         default="", description="深掘り/反論/明確化/接続の対象に選んだ既存論点（完全一致）。新規論点時は空"
     )
-    move_type: Literal["deepen", "challenge", "clarify", "connect", "new"] = "deepen"
+    move_type: Literal["deepen", "challenge", "clarify", "connect", "new"] = Field(
+        default="deepen",
+        description=(
+            "reasoning_target の主張に対する関与の仕方。"
+            "deepen（明確化・検証も含めて掘る）/ challenge（反論）/ clarify（明確化）/ "
+            "connect（既存の別論点と接続）/ new（新規論点）。"
+            "new は、current_points のすべての項目について deepen/challenge/clarify/"
+            "connect の余地が尽きたと判断できる場合のみ選ぶ最終手段。"
+        ),
+    )
+    hook: str = Field(description="最初に表示する短い反応の一句（〜15文字）")
+    body: str = Field(description="hook に続く主張本体。hook+body 合計60文字以内")
+    concepts: list[str] = Field(default_factory=list, description="body 内の強調語を1〜2個")
     current_points: list[str]
     current_topic: str
     emotion: str = "neutral"

@@ -124,6 +124,10 @@
   - 新規テスト: `backend/tests/test_tts.py`（6ケース: ユーザー固定 / 各プール選択 / 決定性 / フォールバック / プール一意性）、`backend/tests/test_classify_gender.py`（6ケース: 各 gender / 例外 / 空 / 不正 JSON フォールバック）。既存 `test_add_character.py` / `test_character_templates.py` / `test_e2e_scenario.py` を gender 検証で更新。
   - VOICEVOX 話者選定: 男性 玄野武宏(11) / 白上虎太郎(12) / 青山龍星(13)、女性 四国めたん(2) / 春日部つむぎ(8) / 小夜/SAYO(46)、ロボット ナースロボ_タイプT(47)。
   - backend テスト 56 passed、`make verify-all` グリーン。
+- 2026-06-14: リフレクション中の AI 発言リークと、ユーザー介入後の AI 自動進行を修正。
+  - Bug1 (リフレクション中リーク): `handleNextTurn` が `nextTurn → onStateChange → setShowReflection` の順だったため、次の AI 発言／TTS がモーダル裏で再生されていた。フローを「reflection は state を進めずに先に開く」方式へ変更。`performAdvance()` を新設し、`handleNextTurn` は `(turn_count+1)%3===0` を事前判定してモーダルだけ開く。「見守る」は `performAdvance` を直接呼ぶ。`reflectionShownForTurn` で同一ターン内の再オープン（介入 submit 経由）を防止。
+  - Bug2 (介入後の自動進行): auto-think useEffect に `isUserSpeaker` ガードを追加。介入直後（`active_character === user.name`）は think を自動発火させず、明示的な「次へ」を待つ。介入発言の TelopBox が即座に「発言の準備が整いました」に上書きされる現象を解消。トレードオフ: 介入→AI 反応のときだけ think プリフェッチが効かないため通常より 1〜2 秒遅くなる。AI→AI および reflection→AI（見守る）は従来通り即応。
+  - backend テスト 63 passed、`make verify-all` グリーン。`frontend/src/screens/DebateStage.tsx` 単独の変更でスキーマ・バックエンド変更なし。
 - 2026-06-14: ベースライン修正と T5B（立ち絵下の名前削除）。
   - ベースライン修正: `DebateStage.tsx` の `interventionRef` を新 `react-hooks/immutability` ルール対応に変更（初期値 null + eslint-disable コメント）。`app/debate.py` の未使用 `roster_names` 削除。`gemini_client.py` の長すぎる行を折り返し。`tests/test_next_turn.py` を T63 リファクタ後の `generate_agent_thought` モック方式に書き換え（廃止予定の `NextTurnLLMOutput` への依存を解消）。
   - T5B: `DebateStage.tsx` の `CharactersRow` から立ち絵下の名前ピル (`<p>{c.name}</p>`) を削除。発言中ステータスラベル (`STATUS_LABEL[status]`) はアクティブ時のみ表示する小さなピルに残した。ユーザー自身の列（右端円形アバター、立ち絵ではない）は対象外。

@@ -100,6 +100,12 @@ export function DebateStage({
   const [reflectionLoading, setReflectionLoading] = useState(false);
   const [prefetchedReflection, setPrefetchedReflection] =
     useState<ReflectionSummary | null>(null);
+  // 「現在の turn_count に対して既に reflection を表示済みか」を追跡する。
+  // reflection 経由で介入 → submit すると active_character=user になるが turn_count は
+  // 進まないため、次の「次へ」でモーダルが再オープンするのを防ぐためのガード。
+  const [reflectionShownForTurn, setReflectionShownForTurn] = useState<
+    number | null
+  >(null);
 
   // T70: TTS プリフェッチ・キャッシュ。`think` が返した agent_thoughts の中で
   // willingness=true な候補全員ぶんを並列に fetch → Blob URL に変換して保持する。
@@ -194,60 +200,75 @@ export function DebateStage({
     if (onOpenHistory) onOpenHistory();
   };
 
-  const handleReflectionContinue = () => {
-    setShowReflection(false);
-    setPrefetchedReflection(null);
-    void handleNextTurn();
-  };
-
   const handleReflectionIntervention = (kind: InterventionKind) => {
     setShowReflection(false);
     setPrefetchedReflection(null);
     setIntervention(kind);
   };
 
-  // AI 進行ターンが完了した際の共通処理。backend が返す turn_count が
-  // REFLECTION_INTERVAL の倍数になったら Reflection Panel を表示し、
-  // facilitator 一言 + 論点×立場×キャラの構造化要約を /api/reflection から取得する。
-  const maybeShowReflection = (newState: DebateState) => {
-    const isReflectionTurn = newState.turn_count % REFLECTION_INTERVAL === 0;
-    const isPreFetchTurn =
-      newState.turn_count % REFLECTION_INTERVAL === REFLECTION_INTERVAL - 1;
-
-    if (isReflectionTurn) {
-      setShowReflection(true);
-      if (prefetchedReflection) {
-        setReflectionSummary(prefetchedReflection);
-        setReflectionLoading(false);
-      } else {
-        setReflectionSummary(null);
-        setReflectionLoading(true);
-        reflection(newState)
-          .then((summary) => setReflectionSummary(summary))
-          .catch((err) => console.error(err))
-          .finally(() => setReflectionLoading(false));
-      }
-    } else if (isPreFetchTurn) {
-      // 次のターンがリフレクションなので先行取得しておく (T65)
-      reflection(newState)
-        .then((summary) => setPrefetchedReflection(summary))
-        .catch((err) => console.error("Pre-fetch reflection failed:", err));
-    }
-  };
-
-  const handleNextTurn = async () => {
+  // 実際に /api/next_turn を叩いて 1 ターン進める処理。reflection 表示の判断は
+  // 含めず、呼び出し側 (handleNextTurn / handleReflectionContinue / 初回 mount)
+  // で制御する。
+  // 次が reflection ターンになる手前で /api/reflection を先取りしてキャッシュする (T65)。
+  const performAdvance = async () => {
     if (isGenerating || !onStateChange) return;
     setIsGenerating(true);
     try {
       const newState = await nextTurn(state);
       onStateChange(newState);
-      maybeShowReflection(newState);
+      if (
+        newState.turn_count % REFLECTION_INTERVAL ===
+        REFLECTION_INTERVAL - 1
+      ) {
+        reflection(newState)
+          .then((summary) => setPrefetchedReflection(summary))
+          .catch((err) =>
+            console.error("Pre-fetch reflection failed:", err),
+          );
+      }
     } catch (err) {
       console.error(err);
       alert("API呼び出しに失敗しました");
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  // ユーザーが「次へ」を押したときのハンドラ。次が reflection ターンに当たる場合は
+  // **state を進めずに** モーダルを開く。これにより「次の AI 発言／TTS／立ち絵が
+  // モーダル裏でリークする」問題を防ぐ。reflectionShownForTurn でこのターンの
+  // モーダルを表示済みかを記録し、reflection → 介入 submit 後の再「次へ」で
+  // モーダルが再オープンするのを防ぐ。
+  const handleNextTurn = async () => {
+    if (isGenerating || !onStateChange) return;
+    const nextWillBeReflection =
+      (state.turn_count + 1) % REFLECTION_INTERVAL === 0;
+    if (nextWillBeReflection && reflectionShownForTurn !== state.turn_count) {
+      setShowReflection(true);
+      setReflectionShownForTurn(state.turn_count);
+      if (prefetchedReflection) {
+        setReflectionSummary(prefetchedReflection);
+        setReflectionLoading(false);
+      } else {
+        setReflectionSummary(null);
+        setReflectionLoading(true);
+        reflection(state)
+          .then((summary) => setReflectionSummary(summary))
+          .catch((err) => console.error(err))
+          .finally(() => setReflectionLoading(false));
+      }
+      return;
+    }
+    await performAdvance();
+  };
+
+  // 「見守る（このまま次へ）」: モーダルを閉じて実際に 1 ターン進める。
+  // handleNextTurn の reflection チェックを通すと再オープンしてしまうため、
+  // performAdvance を直接呼ぶ。
+  const handleReflectionContinue = () => {
+    setShowReflection(false);
+    setPrefetchedReflection(null);
+    void performAdvance();
   };
 
   const handleThink = useCallback(
@@ -289,13 +310,21 @@ export function DebateStage({
     interventionRef.current = intervention;
   }, [intervention]);
 
-  // 発言が完了したタイミングで自動的に「思考」を開始する (T63)
+  // 発言が完了したタイミングで自動的に「思考」を開始する (T63)。
+  // ただし、active_character がユーザー（介入直後）の場合は自動発火しない:
+  // 介入直後に think が走ると介入発言の TelopBox が即座に "発言の準備が整いました"
+  // に切り替わってしまい、ユーザーから見ると「次へを押してないのに進んでいる」状態に
+  // なるため。介入後の進行は必ず明示的な「次へ」クリックで起こす。
   useEffect(() => {
     if (
       state.status === "speaking" &&
       state.current_speech !== "" &&
       !isGenerating
     ) {
+      const isUserSpeaker =
+        state.active_character === state.user.name ||
+        state.active_character === USER_SPEAKER;
+      if (isUserSpeaker) return;
       // ユーザーが介入モード（モーダル入力中など）でないことを確認
       if (intervention === null && !isAddCharOpen && !showReflection) {
         const timer = setTimeout(() => {
@@ -307,6 +336,8 @@ export function DebateStage({
   }, [
     state.current_speech,
     state.status,
+    state.active_character,
+    state.user.name,
     isGenerating,
     intervention,
     isAddCharOpen,
@@ -315,7 +346,10 @@ export function DebateStage({
     state,
   ]);
 
-  // 最初の発言がない場合は自動でAPIを叩いて会話を始める
+  // 最初の発言がない場合は自動でAPIを叩いて会話を始める。
+  // 初回ターン（turn_count 0 → 1）は reflection 対象外（1 % 3 != 0）のため、
+  // reflection モーダル判定は不要。reflection の先取りキャッシュも初回はスキップ
+  // (まだ chat_history が薄く要約も無意味)。
   useEffect(() => {
     let mounted = true;
     const initTurn = async () => {
@@ -325,7 +359,6 @@ export function DebateStage({
         const newState = await nextTurn(state);
         if (mounted) {
           onStateChange(newState);
-          maybeShowReflection(newState);
         }
       } catch (err) {
         console.error(err);

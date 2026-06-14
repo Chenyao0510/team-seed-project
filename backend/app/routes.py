@@ -11,6 +11,7 @@ from app.models import (
     AddCharacterRequest,
     AddCharacterResponse,
     DebateState,
+    Gender,
     IntegrationState,
     ReflectionSummary,
 )
@@ -24,12 +25,20 @@ router = APIRouter()
 @router.post("/api/add_character", response_model=AddCharacterResponse)
 def add_character(request: AddCharacterRequest) -> AddCharacterResponse:
     avatar_url = generate_character_avatar(request.name)
+    # T69 / D17: TTS 話者プール選択のため性別カテゴリを判定する。
+    # classify_gender は内部で API エラーを握り潰して 'male' フォールバックを返すため、
+    # ここでは例外ハンドリング不要。
+    gender = gemini_client.classify_gender(request.name)
+    # T72 / D18: 発言生成プロンプト用のペルソナを best-effort で生成。
+    # 失敗してもアバター生成のフローは止めない。
     persona = _safe_generate_persona(request.name)
-    return AddCharacterResponse(avatar_url=avatar_url, persona=persona)
+    return AddCharacterResponse(
+        avatar_url=avatar_url, gender=gender, persona=persona
+    )
 
 
 def _safe_generate_persona(name: str) -> str:
-    """ペルソナ生成は best-effort。失敗してもアバター生成のフローを止めない (T62)。"""
+    """ペルソナ生成は best-effort。失敗してもアバター生成のフローを止めない (T72)。"""
     try:
         return gemini_client.generate_character_persona(name)
     except Exception:
@@ -65,6 +74,14 @@ def summarize(state: DebateState) -> IntegrationState:
 
 
 @router.get("/api/tts", response_class=Response)
-async def tts(text: str, character_name: str) -> Response:
-    """VOICEVOXを使って音声を合成しWAVデータを返す"""
-    return await generate_tts(text, character_name)
+async def tts(
+    text: str,
+    character_name: str,
+    gender: Gender | None = None,
+) -> Response:
+    """VOICEVOXを使って音声を合成しWAVデータを返す。
+
+    T69: `gender` 指定があれば性別プールから話者を選ぶ。未指定は名前ハッシュ・
+    フォールバック（旧 State との後方互換）。
+    """
+    return await generate_tts(text, character_name, gender)

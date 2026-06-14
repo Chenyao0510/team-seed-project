@@ -1,10 +1,14 @@
 import { useState } from 'react'
 import { addCharacter, type CharacterTemplate } from '../api/client'
 import { CharacterTemplatePanel } from '../components/setup/CharacterTemplatePanel'
+import type { Gender } from '../types/state'
 
 export interface SetupMember {
   name: string
   avatarUrl: string | null
+  // T69: TTS 話者プール用。`/api/add_character` レスポンスまたはテンプレイトに静的定義された値。
+  gender?: Gender
+  // T72: 発言生成プロンプト用ペルソナ。
   persona?: string
 }
 
@@ -44,9 +48,11 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
 
     setLoadingMembers((prev) => new Set(prev).add(name))
     addCharacter(name)
-      .then(({ avatar_url, persona }) => {
+      .then(({ avatar_url, gender, persona }) => {
         setMembers((prev) =>
-          prev.map((m) => (m.name === name ? { ...m, avatarUrl: avatar_url, persona } : m)),
+          prev.map((m) =>
+            m.name === name ? { ...m, avatarUrl: avatar_url, gender, persona } : m,
+          ),
         )
       })
       .catch(() => {
@@ -71,7 +77,12 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
     if (members.some((m) => m.name === template.name)) return
     setMembers((prev) => [
       ...prev,
-      { name: template.name, avatarUrl: template.avatar_url, persona: template.persona },
+      {
+        name: template.name,
+        avatarUrl: template.avatar_url,
+        gender: template.gender,
+        persona: template.persona,
+      },
     ])
   }
 

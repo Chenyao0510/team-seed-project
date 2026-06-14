@@ -32,6 +32,8 @@ from app.models import (
     AgentThoughtOutput,
     CharacterPersonaOutput,
     DebateState,
+    Gender,
+    GenderClassification,
     IntegrationState,
     NextTurnLLMOutput,
     ReflectionSummary,
@@ -96,6 +98,38 @@ def generate_avatar_image(
                 return part.inline_data.data
 
     raise ValueError("Gemini image response did not contain inline image data")
+
+
+def classify_gender(name: str) -> Gender:
+    """人物・キャラクター名から TTS 話者プール用の性別カテゴリを判定する (T69 / D17)。
+
+    通常の人物は `male` / `female`、ドラえもん等の明らかな非人間キャラは `robot`。
+    判定不能や API 失敗時は `male` フォールバック（呼び出し元の routes.py は
+    例外を catch しない前提で、ここで握り潰してデフォルトを返す）。
+    """
+    prompt = (
+        f"「{name}」というキャラクター/人物の TTS 音声カテゴリを判定してください。\n"
+        "- 男性なら 'male'\n"
+        "- 女性なら 'female'\n"
+        "- ドラえもん / R2-D2 / アシモ等、明らかに人間ではないロボット/AI キャラなら 'robot'\n"
+        "迷ったときは性別の見た目で判断し、不明なら 'male' を返してください。"
+    )
+    try:
+        response = _get_client().models.generate_content(
+            model=TEXT_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=GenderClassification,
+                http_options=types.HttpOptions(timeout=NEXT_TURN_TIMEOUT_SECONDS * 1000),
+            ),
+        )
+        text = (response.text or "").strip()
+        if not text:
+            return "male"
+        return GenderClassification.model_validate(json.loads(text)).gender
+    except Exception:
+        return "male"
 
 
 def generate_character_persona(name: str) -> str:

@@ -1,9 +1,16 @@
 // Canonical State types. Source of truth: DECISIONS.md D01 and fixtures/*.json.
 // Keep this file in sync with the JSON fixtures and backend pydantic models.
 
+// T69 / D17: TTS 話者プール切り替え用の性別カテゴリ。
+export type Gender = "male" | "female" | "robot";
+
 export interface Character {
   name: string;
   avatar_url: string;
+  // T69: `/api/tts` 呼び出し時に性別プールから話者を選ぶ。
+  // 旧 State との後方互換のため optional。
+  gender?: Gender;
+  // T72 / D18: 人物像・口調・専門・価値観。発言生成プロンプトの色付け専用。
   persona?: string;
 }
 

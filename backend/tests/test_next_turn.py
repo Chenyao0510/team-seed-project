@@ -172,12 +172,22 @@ def test_next_turn_propagates_emotion_from_llm_output(monkeypatch):
     state = load_debate_state()
 
     def mock_generate_agent_thought(s, name):
+        if name == "Jobs":
+            return AgentThoughtOutput(
+                willingness_to_speak=True,
+                thought="思考",
+                hook="やってみろ。",
+                body="議論より試作が早い。",
+                emotion="confident",
+                current_points=s.current_points,
+                current_topic=s.current_topic,
+            )
         return AgentThoughtOutput(
-            willingness_to_speak=(name == "Jobs"),
-            thought="思考",
-            hook="やってみろ。",
-            body="議論より試作が早い。",
-            emotion="confident",
+            willingness_to_speak=False,
+            thought="見守り",
+            hook="",
+            body="",
+            emotion="neutral",
             current_points=s.current_points,
             current_topic=s.current_topic,
         )

@@ -21,9 +21,10 @@ export function buildInitialDebateState(setup: SetupResult): DebateState {
     current_concepts: [],
     emotion: 'neutral',
     current_points: [],
-    characters: setup.members.map(({ name, avatarUrl, persona }) => ({
+    characters: setup.members.map(({ name, avatarUrl, gender, persona }) => ({
       name,
       avatar_url: avatarUrl ?? FALLBACK_AVATAR_URL,
+      gender,
       persona: persona ?? '',
     })),
     chat_history: [],

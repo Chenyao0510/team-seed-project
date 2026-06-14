@@ -5,6 +5,7 @@ import type {
   DebateState,
   DebateStatus,
   ChatHistoryEntry,
+  Gender,
   ReflectionSummary,
   AgentThought,
 } from "../types/state";
@@ -65,11 +66,24 @@ const USER_AVATAR_FALLBACK = "https://placeholder.example/user.png";
 // 「ユーザー介入」として扱い、次の AI がそれに反応する: DECISIONS D11）。
 const USER_SPEAKER = "あなた";
 
-const STATUS_LABEL: Record<DebateStatus, string> = {
-  thinking: "思考中",
-  speaking: "発言中",
-  waiting: "待機中",
-};
+// T70: TTS プリフェッチ用ヘルパー。speaker + speech + gender を一意なキーにする。
+// （同じキャラクターでも発言が違えば別 wav なので speech も含める）
+function buildTtsUrl(
+  speaker: string,
+  speech: string,
+  gender: Gender | undefined,
+): string {
+  const genderQuery = gender ? `&gender=${gender}` : "";
+  return `${API_BASE_URL}/api/tts?text=${encodeURIComponent(speech)}&character_name=${encodeURIComponent(speaker)}${genderQuery}`;
+}
+
+function ttsCacheKey(
+  speaker: string,
+  speech: string,
+  gender: Gender | undefined,
+): string {
+  return `${speaker}|${gender ?? ""}|${speech}`;
+}
 
 // Reflection Turn (T26/T27): 何ターンごとに一時停止して Reflection Panel を表示するか。
 // turn_count は backend が `/api/next_turn` のたびに+1して返す値（ユーザー介入はカウントしない）。
@@ -97,6 +111,78 @@ export function DebateStage({
   const [reflectionLoading, setReflectionLoading] = useState(false);
   const [prefetchedReflection, setPrefetchedReflection] =
     useState<ReflectionSummary | null>(null);
+  // 「現在の turn_count に対して既に reflection を表示済みか」を追跡する。
+  // reflection 経由で介入 → submit すると active_character=user になるが turn_count は
+  // 進まないため、次の「次へ」でモーダルが再オープンするのを防ぐためのガード。
+  const [reflectionShownForTurn, setReflectionShownForTurn] = useState<
+    number | null
+  >(null);
+
+  // T70: TTS プリフェッチ・キャッシュ。`think` が返した agent_thoughts の中で
+  // willingness=true な候補全員ぶんを並列に fetch → Blob URL に変換して保持する。
+  // 「次へ」クリックで決まった speaker のキャッシュが命中していれば、ネットワーク往復
+  // ゼロで即再生できる（ハッカソン尺の体験向上が最優先）。
+  // Map<cacheKey, blobUrl | "pending">。"pending" は二重発火防止のセンチネル。
+  const ttsCacheRef = useRef<Map<string, string>>(new Map());
+
+  // Stage アンマウント時に Blob URL を解放する。途中で発言が切り替わっても、
+  // 既に作った Blob URL は他キャラの prefetch から参照される可能性があるため、
+  // 個別キーごとには revoke せず Stage 一括で破棄する（生存時間 = 議論セッション中）。
+  useEffect(() => {
+    const cache = ttsCacheRef.current;
+    return () => {
+      for (const url of cache.values()) {
+        if (url && url !== "pending") {
+          URL.revokeObjectURL(url);
+        }
+      }
+      cache.clear();
+    };
+  }, []);
+
+  const resolveTtsUrl = useCallback(
+    (speaker: string, speech: string, gender: Gender | undefined): string => {
+      const cached = ttsCacheRef.current.get(ttsCacheKey(speaker, speech, gender));
+      if (cached && cached !== "pending") {
+        return cached;
+      }
+      return buildTtsUrl(speaker, speech, gender);
+    },
+    [],
+  );
+
+  // T70: agent_thoughts (think の結果) が乗ったら、willing な候補全員ぶんの TTS を
+  // バックグラウンドで取りに行く。fetch → blob → URL.createObjectURL でキャッシュに
+  // 保存。失敗時はキーを消して、本番再生時の通常 URL fallback に任せる。
+  useEffect(() => {
+    const thoughts = state.agent_thoughts;
+    if (!thoughts) return;
+    const cache = ttsCacheRef.current;
+
+    for (const [name, thought] of Object.entries(thoughts)) {
+      if (!thought.willingness_to_speak) continue;
+      const speech = thought.current_speech;
+      if (!speech) continue;
+      const gender = state.characters.find((c) => c.name === name)?.gender;
+      const key = ttsCacheKey(name, speech, gender);
+      if (cache.has(key)) continue;
+      cache.set(key, "pending");
+
+      void (async () => {
+        try {
+          const response = await fetch(buildTtsUrl(name, speech, gender));
+          if (!response.ok) throw new Error(`tts prefetch ${response.status}`);
+          const blob = await response.blob();
+          // prefetch 完了より先にアンマウントが走った場合は cache が空になっている
+          if (!cache.has(key)) return;
+          cache.set(key, URL.createObjectURL(blob));
+        } catch (err) {
+          console.warn(`[T70] TTS prefetch failed for ${name}:`, err);
+          cache.delete(key);
+        }
+      })();
+    }
+  }, [state.agent_thoughts, state.characters]);
 
   const existingNames = state.characters.map((c) => c.name);
 
@@ -132,60 +218,75 @@ export function DebateStage({
     if (onOpenHistory) onOpenHistory();
   };
 
-  const handleReflectionContinue = () => {
-    setShowReflection(false);
-    setPrefetchedReflection(null);
-    void handleNextTurn();
-  };
-
   const handleReflectionIntervention = (kind: InterventionKind) => {
     setShowReflection(false);
     setPrefetchedReflection(null);
     setIntervention(kind);
   };
 
-  // AI 進行ターンが完了した際の共通処理。backend が返す turn_count が
-  // REFLECTION_INTERVAL の倍数になったら Reflection Panel を表示し、
-  // facilitator 一言 + 論点×立場×キャラの構造化要約を /api/reflection から取得する。
-  const maybeShowReflection = (newState: DebateState) => {
-    const isReflectionTurn = newState.turn_count % REFLECTION_INTERVAL === 0;
-    const isPreFetchTurn =
-      newState.turn_count % REFLECTION_INTERVAL === REFLECTION_INTERVAL - 1;
-
-    if (isReflectionTurn) {
-      setShowReflection(true);
-      if (prefetchedReflection) {
-        setReflectionSummary(prefetchedReflection);
-        setReflectionLoading(false);
-      } else {
-        setReflectionSummary(null);
-        setReflectionLoading(true);
-        reflection(newState)
-          .then((summary) => setReflectionSummary(summary))
-          .catch((err) => console.error(err))
-          .finally(() => setReflectionLoading(false));
-      }
-    } else if (isPreFetchTurn) {
-      // 次のターンがリフレクションなので先行取得しておく (T65)
-      reflection(newState)
-        .then((summary) => setPrefetchedReflection(summary))
-        .catch((err) => console.error("Pre-fetch reflection failed:", err));
-    }
-  };
-
-  const handleNextTurn = async () => {
+  // 実際に /api/next_turn を叩いて 1 ターン進める処理。reflection 表示の判断は
+  // 含めず、呼び出し側 (handleNextTurn / handleReflectionContinue / 初回 mount)
+  // で制御する。
+  // 次が reflection ターンになる手前で /api/reflection を先取りしてキャッシュする (T65)。
+  const performAdvance = async () => {
     if (isGenerating || !onStateChange) return;
     setIsGenerating(true);
     try {
       const newState = await nextTurn(state);
       onStateChange(newState);
-      maybeShowReflection(newState);
+      if (
+        newState.turn_count % REFLECTION_INTERVAL ===
+        REFLECTION_INTERVAL - 1
+      ) {
+        reflection(newState)
+          .then((summary) => setPrefetchedReflection(summary))
+          .catch((err) =>
+            console.error("Pre-fetch reflection failed:", err),
+          );
+      }
     } catch (err) {
       console.error(err);
       alert("API呼び出しに失敗しました");
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  // ユーザーが「次へ」を押したときのハンドラ。次が reflection ターンに当たる場合は
+  // **state を進めずに** モーダルを開く。これにより「次の AI 発言／TTS／立ち絵が
+  // モーダル裏でリークする」問題を防ぐ。reflectionShownForTurn でこのターンの
+  // モーダルを表示済みかを記録し、reflection → 介入 submit 後の再「次へ」で
+  // モーダルが再オープンするのを防ぐ。
+  const handleNextTurn = async () => {
+    if (isGenerating || !onStateChange) return;
+    const nextWillBeReflection =
+      (state.turn_count + 1) % REFLECTION_INTERVAL === 0;
+    if (nextWillBeReflection && reflectionShownForTurn !== state.turn_count) {
+      setShowReflection(true);
+      setReflectionShownForTurn(state.turn_count);
+      if (prefetchedReflection) {
+        setReflectionSummary(prefetchedReflection);
+        setReflectionLoading(false);
+      } else {
+        setReflectionSummary(null);
+        setReflectionLoading(true);
+        reflection(state)
+          .then((summary) => setReflectionSummary(summary))
+          .catch((err) => console.error(err))
+          .finally(() => setReflectionLoading(false));
+      }
+      return;
+    }
+    await performAdvance();
+  };
+
+  // 「見守る（このまま次へ）」: モーダルを閉じて実際に 1 ターン進める。
+  // handleNextTurn の reflection チェックを通すと再オープンしてしまうため、
+  // performAdvance を直接呼ぶ。
+  const handleReflectionContinue = () => {
+    setShowReflection(false);
+    setPrefetchedReflection(null);
+    void performAdvance();
   };
 
   const handleThink = useCallback(
@@ -219,18 +320,29 @@ export function DebateStage({
   );
 
   // 最新の intervention 状態を参照するための Ref
-  const interventionRef = useRef<InterventionKind | null>(intervention);
+  // think() は非同期で、await 中に intervention が変化することがあるため、
+  // 完了時点で最新値を参照できるよう Ref に同期しておく
+  const interventionRef = useRef<InterventionKind | null>(null);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability
     interventionRef.current = intervention;
   }, [intervention]);
 
-  // 発言が完了したタイミングで自動的に「思考」を開始する (T63)
+  // 発言が完了したタイミングで自動的に「思考」を開始する (T63)。
+  // ただし、active_character がユーザー（介入直後）の場合は自動発火しない:
+  // 介入直後に think が走ると介入発言の TelopBox が即座に "発言の準備が整いました"
+  // に切り替わってしまい、ユーザーから見ると「次へを押してないのに進んでいる」状態に
+  // なるため。介入後の進行は必ず明示的な「次へ」クリックで起こす。
   useEffect(() => {
     if (
       state.status === "speaking" &&
       state.current_speech !== "" &&
       !isGenerating
     ) {
+      const isUserSpeaker =
+        state.active_character === state.user.name ||
+        state.active_character === USER_SPEAKER;
+      if (isUserSpeaker) return;
       // ユーザーが介入モード（モーダル入力中など）でないことを確認
       if (intervention === null && !isAddCharOpen && !showReflection) {
         const timer = setTimeout(() => {
@@ -242,6 +354,8 @@ export function DebateStage({
   }, [
     state.current_speech,
     state.status,
+    state.active_character,
+    state.user.name,
     isGenerating,
     intervention,
     isAddCharOpen,
@@ -250,7 +364,10 @@ export function DebateStage({
     state,
   ]);
 
-  // 最初の発言がない場合は自動でAPIを叩いて会話を始める
+  // 最初の発言がない場合は自動でAPIを叩いて会話を始める。
+  // 初回ターン（turn_count 0 → 1）は reflection 対象外（1 % 3 != 0）のため、
+  // reflection モーダル判定は不要。reflection の先取りキャッシュも初回はスキップ
+  // (まだ chat_history が薄く要約も無意味)。
   useEffect(() => {
     let mounted = true;
     const initTurn = async () => {
@@ -260,7 +377,6 @@ export function DebateStage({
         const newState = await nextTurn(state);
         if (mounted) {
           onStateChange(newState);
-          maybeShowReflection(newState);
         }
       } catch (err) {
         console.error(err);
@@ -332,6 +448,8 @@ export function DebateStage({
                   onSubmit={(text) => submitIntervention(intervention!, text)}
                   userName={state.user.name}
                   agentThoughts={state.agent_thoughts}
+                  characters={state.characters}
+                  resolveTtsUrl={resolveTtsUrl}
                 />
                 {/* 進行ボタンをテロップ横か下に配置 */}
                 <div className="mx-auto mt-4 flex max-w-3xl justify-end">
@@ -1057,14 +1175,7 @@ function CharactersRow({
                   <div className="absolute -bottom-4 left-1/2 w-3/4 -translate-x-1/2 h-10 bg-emerald-400/35 blur-2xl rounded-[100%]" />
                 )}
               </div>
-              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/85 px-4 py-1 rounded-full border border-slate-700 whitespace-nowrap">
-                <p className="text-sm font-semibold text-slate-100">{c.name}</p>
-                {active && (
-                  <span className="block text-center mt-0.5 text-[10px] text-emerald-300 uppercase tracking-wider">
-                    {STATUS_LABEL[status]}
-                  </span>
-                )}
-              </div>
+              {/* T5B: 立ち絵下のラベル（名前 / 発言中ステータス）はすべて非表示 */}
             </motion.li>
           );
         })}
@@ -1074,7 +1185,7 @@ function CharactersRow({
       <div
         data-testid="stage-user"
         className={[
-          "flex flex-col items-center relative z-20 shrink-0 ml-2 mb-4 transition-all duration-300 ease-out",
+          "flex flex-col items-center relative z-20 shrink-0 ml-2 mb-44 transition-all duration-300 ease-out",
           isUserActive ? "scale-105" : "scale-95 opacity-80",
         ].join(" ")}
       >
@@ -1124,6 +1235,15 @@ interface TelopBoxProps {
   onSubmit: (text: string) => void;
   userName?: string;
   agentThoughts?: Record<string, AgentThought>;
+  // T69: TTS の話者プール選択用に発言者の gender を解決するため。
+  characters: Character[];
+  // T70: 親 (DebateStage) が保持する TTS プリフェッチキャッシュ参照。
+  // 命中していれば Blob URL、未命中なら通常 `/api/tts` URL を返す。
+  resolveTtsUrl: (
+    speaker: string,
+    speech: string,
+    gender: Gender | undefined,
+  ) => string;
 }
 
 function TelopBox({
@@ -1140,6 +1260,8 @@ function TelopBox({
   onSubmit,
   userName = "あなた",
   agentThoughts,
+  characters,
+  resolveTtsUrl,
 }: TelopBoxProps) {
   const empty = speech.trim().length === 0;
   const [draft, setDraft] = useState("");
@@ -1158,7 +1280,10 @@ function TelopBox({
 
     // AIの発言かつ発言が存在する場合のみ自動再生を試みる
     if (!empty && speaker && speaker !== USER_SPEAKER && speaker !== userName) {
-      const url = `${API_BASE_URL}/api/tts?text=${encodeURIComponent(speech)}&character_name=${encodeURIComponent(speaker)}`;
+      // T69: 発言者の gender を解決する。T70: think 中にプリフェッチ済みなら Blob URL、
+      // 未命中なら通常 `/api/tts?...` URL（ネットワーク往復あり）が返る。
+      const gender = characters.find((c) => c.name === speaker)?.gender;
+      const url = resolveTtsUrl(speaker, speech, gender);
       const audio = new Audio(url);
       audioRef.current = audio;
 
@@ -1182,7 +1307,7 @@ function TelopBox({
         audioRef.current = null;
       }
     };
-  }, [speech, speaker, userName, empty]);
+  }, [speech, speaker, userName, empty, characters, resolveTtsUrl]);
 
   const handlePlayClick = () => {
     if (audioRef.current) {

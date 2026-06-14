@@ -18,11 +18,13 @@
     {
       "name": "Jobs",
       "avatar_url": "https://placeholder.example/jobs.png",
+      "gender": "male",
       "persona": "完璧主義のプロダクトデザイナー。妥協を許さず、シンプルさと直感的な体験を最優先する断定的な口調で話す。"
     },
     {
       "name": "Socrates",
       "avatar_url": "https://placeholder.example/socrates.png",
+      "gender": "male",
       "persona": "古代ギリシアの哲学者。問答法で相手の前提を一つずつ崩し、断定よりも鋭い問い返しで本質に迫る。"
     }
   ],

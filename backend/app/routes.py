@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 from fastapi.responses import Response
 
+from app import gemini_client
 from app.avatar_pipeline import generate_character_avatar
 from app.character_templates import CharacterTemplate, list_available_templates
 from app.debate import advance_turn
@@ -23,7 +24,16 @@ router = APIRouter()
 @router.post("/api/add_character", response_model=AddCharacterResponse)
 def add_character(request: AddCharacterRequest) -> AddCharacterResponse:
     avatar_url = generate_character_avatar(request.name)
-    return AddCharacterResponse(avatar_url=avatar_url)
+    persona = _safe_generate_persona(request.name)
+    return AddCharacterResponse(avatar_url=avatar_url, persona=persona)
+
+
+def _safe_generate_persona(name: str) -> str:
+    """ペルソナ生成は best-effort。失敗してもアバター生成のフローを止めない (T62)。"""
+    try:
+        return gemini_client.generate_character_persona(name)
+    except Exception:
+        return ""
 
 
 @router.get("/api/character_templates", response_model=list[CharacterTemplate])

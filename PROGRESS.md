@@ -39,11 +39,12 @@
 - [x] **T61** `[Both]`: **強制ターンと発言ターンの状態管理分離（競合修正）**
   - `/api/think` による思考フェーズの分離と、ユーザーによる「次へ」ボタンの明示的な進行制御により、AI発言とユーザー介入・強制ターンの競合を根本的に解消。
 
-- [ ] **T62** `[Back]`: **人物発言時時のプロンプト調整**
+- [x] **T62** `[Both]`: **人物発言時時のプロンプト調整**
   - 人物代弁時、本人らしさ(本人ならではの経験や)を強化し、相手への過度な尊重を省く。文章が伸びないよう、主張を短く・はっきり・断定的に出力させる, T64と関連
+  - `CharacterRef` に `persona`(人物像・口調・専門・価値観) を追加し発言生成プロンプトに注入。詳細は DECISIONS D17。
 - [x] **T63** `[Back]`: **文脈に応じた発言者の動的アサイン**
   - 会話ログの文脈から「次に誰が喋るべきか」をLLMに判断させ、発言者を動的に決定。`/api/think` による先行思考と話者交代ロジックの強化で実装済み。
-- [ ] **T64** `[Back]`: **人物の会話生成処理の総合的チューニング**
+- [x] **T64** `[Back]`: **人物の会話生成処理の総合的チューニング**
   - 議論の一貫性向上、端的な発言、論点ズレ防止、紳士的すぎる口調の修正（断定的に・キャラに合わせる）、堂々巡りの防止策の実装。（※最終的な仕上げとして実施）,T62と関連
 - [x] **T65** `[Back]`: **Reflection APIのPre-fetch（先行読み込み）**
   - リフレクションターンの1ターン前にバックグラウンドで `/api/reflection` を実行。結果をキャッシュし、パネル表示時のロード時間を解消。
@@ -56,6 +57,8 @@
   - フロントエンドでAI発言時 (`DebateStage.tsx` の `useEffect`) に `Audio` オブジェクトで再生するよう実装。
 - [x] **T68** `[Both]`: **APIの先行バッチ処理とオートプレイ化**
   - `/api/think` による思考フェーズのバックグラウンド実行により、発言の待ち時間を解消。「次へ」クリック時の即時レスポンスを実現。
+- [x] **T69** `[Both]`: **発言生成リファクタ（reacting/questioning/advancing）**
+  - 発言を `hook`（即時表示の一句）/`body`（タイプライター描画）/`reasoning_target`（返信チップ）/`concepts`（強調語）に構造化。hook+body 合計60文字以内、直前発言への反応・新しい角度・問い・緊張を強制する10の鉄則にプロンプト改訂。persona は口調の色付け専用に再定義（自己紹介・朗読禁止）。詳細は DECISIONS D18。
 
 
 ---
@@ -92,3 +95,20 @@
   - さらに「縦幅統一」要望を反映: 立ち絵 img を `absolute bottom-0 h-full w-auto max-w-none` に変更し、ステージの h-full で全員同じ縦サイズ、横はアスペクト比に応じた自然幅で描画。列幅 (`flex-1 min-w-0 max-w-[360px]`) より広い画像は隣にはみ出して重なる（ユーザー要望: 横重なり可）。
   - 立ち絵 PNG を bbox 自動クロップ: `backend/app/background_removal.py` で透過後 `alpha > 32` の最小外接矩形＋12px パディングにクロップ。これにより透過 PNG の余白が削れ、フロント側 `h-full w-auto` で表示したときキャラがステージを目一杯占めるようになる。`test_background_removal.py` に bbox クロップ／全透過時の現状維持ケースを追加。
   - backend テスト 30 passed、`make verify-all` グリーン。
+- 2026-06-14: T62（人物発言プロンプト調整）、T64（人物の会話生成処理の総合的チューニング）を実装。
+  - `CharacterRef` / `AddCharacterResponse` に `persona: str = ""`（人物像・口調・専門・価値観を1〜2文）を追加（後方互換、既定空文字）。DECISIONS D01 改訂 + D17 新規。
+  - `character_templates.py` の事前生成テンプレート8人に persona を著述。`all_template_specs()` の戻り値形が3要素タプルになったため `seed_templates.py` の unpack も追従。
+  - `gemini_client.generate_character_persona` を新設（JSON Mode + `CharacterPersonaOutput`）。`/api/add_character` で best-effort 生成し `AddCharacterResponse.persona` として返す（失敗時は `""`、アバター生成のフローには影響しない）。
+  - `_build_agent_thought_prompt` / `_build_next_turn_prompt` を改訂: 発話キャラの persona を冒頭に提示（無い場合はモデル自身の知識に委ねる文言）、`current_speech` を「1〜2文を基本・最大3文、前置き/両論併記/同調の枕詞・過度な敬意を避け断定的に」に変更。一貫性維持・テーマ逸脱の引き戻し・既出主張の繰り返し回避ルールを追加。
+  - frontend: `Character.persona?` / `AddCharacterResponse.persona` / `CharacterTemplate.persona` を型に追加。`SetupScreen` の `addMember` / `addMemberByTemplate` で persona を保持し、`buildInitialDebateState` で `characters[].persona` に反映。
+  - 新規テスト `backend/tests/test_speech_prompts.py`（3ケース）: persona 注入・persona 無し時のフォールバック文言・next_turn プロンプトへの persona 一覧反映を Gemini 非依存で検証。`test_add_character.py` / `test_character_templates.py` に persona 関連 assert を追加。
+  - `fixtures/debate_state_sample.json` の Jobs / Socrates に persona を追記。
+  - backend テスト 33 passed、`make verify-all` グリーン。
+- 2026-06-14: T69（発言生成リファクタ: hook/body/reasoning_target/concepts + タイプライター演出）を実装。
+  - D17 の persona 注入で発言が「経歴・信条を朗読する講釈」化した副作用を是正。狙いは reacting / questioning / advancing。
+  - 発言出力スキーマを単一 `current_speech` から `{hook, body, reasoning_target, concepts}` に構造化（`AgentThoughtOutput` / legacy `NextTurnLLMOutput`）。`DebateState` に表示専用 `current_hook/current_body/current_reasoning_target/current_concepts` を追加し、`current_speech` は `hook + body` の合成導出値として温存（TTS・archive・オートシンク発火条件の互換維持）。`debate.py` に `_compose_speech` を追加。
+  - `gemini_client.py` に `_speech_rules`（10の鉄則 + フィールド定義 + 60文字制約）を新設し両プロンプトで共有。`_persona_clause` を「口調・立場の色付け専用、自己紹介・朗読禁止」に再定義。
+  - frontend: `components/debate/Typewriter.tsx`（concepts ハイライト付きタイプライター）を新設。`TelopBox` を hook 即時表示 → reasoning_target 返信チップ → body タイプライターに刷新（hook/body 空時は `current_speech` を平文フォールバック）。`buildDebateState` / `submitIntervention` で新フィールドを初期化。TTS は合成 `current_speech` 依存のまま不変。
+  - DECISIONS D01 にフィールド追記 + D18 新規。`docs/ARCHITECTURE.md` の next_turn データフロー / 出力契約を更新。`fixtures/debate_state_sample.json` を構造化発言の例に更新。
+  - テスト: `test_next_turn.py` / `test_e2e_scenario.py` のモック・アサーションを hook/body に更新（旧 `generate_next_turn` をモックして実質デッドだった emotion 系2ケースを `generate_agent_thought` モックに修正＝既存の `NextTurnLLMOutput` NameError も解消）。`test_speech_prompts.py` を新ルール語に更新。backend 44 passed。
+  - `make check-types` / `make build` グリーン。既知の lint 失敗（`DebateStage.tsx:206`）は本変更前から存在する別件。

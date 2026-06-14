@@ -60,6 +60,9 @@
 - [x] **T68** `[Both]`: **APIの先行バッチ処理とオートプレイ化**
   - `/api/think` による思考フェーズのバックグラウンド実行により、発言の待ち時間を解消。「次へ」クリック時の即時レスポンスを実現。
 - [x] **T69** `[Both]`: **TTS音声のキャラクター性別判定による話者割り当て**
+  - キャラクター追加時に Gemini で `male`/`female`/`robot` を判定し、`/api/tts` 呼び出しで性別プールから話者を選ぶ。
+- [x] **T70** `[Front]`: **TTS の先行プリフェッチ**
+  - `/api/think` で willing 候補が確定したタイミングで、各候補ぶんの TTS を並列で fetch → Blob URL に変換してキャッシュ。「次へ」クリック後の通信往復ゼロで即再生。
   - 現状の T67 実装はキャラクター名のハッシュで `speaker_id` を割り当てているため、男性キャラに女声・女性キャラに男声が当たることがある。
   - キャラクター追加時に AI（Gemini）で性別カテゴリを判定し、`gender: "male" | "female" | "robot"` を State / pydantic スキーマに追加する。
   - VOICEVOX 話者プールを「男性3種類・女性3種類・ロボット1種類」のグループに分け、性別カテゴリ内でハッシュ分散して `speaker_id` を選ぶ。
@@ -100,6 +103,11 @@
   - さらに「縦幅統一」要望を反映: 立ち絵 img を `absolute bottom-0 h-full w-auto max-w-none` に変更し、ステージの h-full で全員同じ縦サイズ、横はアスペクト比に応じた自然幅で描画。列幅 (`flex-1 min-w-0 max-w-[360px]`) より広い画像は隣にはみ出して重なる（ユーザー要望: 横重なり可）。
   - 立ち絵 PNG を bbox 自動クロップ: `backend/app/background_removal.py` で透過後 `alpha > 32` の最小外接矩形＋12px パディングにクロップ。これにより透過 PNG の余白が削れ、フロント側 `h-full w-auto` で表示したときキャラがステージを目一杯占めるようになる。`test_background_removal.py` に bbox クロップ／全透過時の現状維持ケースを追加。
   - backend テスト 30 passed、`make verify-all` グリーン。
+- 2026-06-14: T70（TTS 先行プリフェッチ）。
+  - `DebateStage.tsx` に `ttsCacheRef: Map<key, blobUrl | "pending">` を導入。`state.agent_thoughts` が更新されたタイミングで willing=true の各候補ぶん `/api/tts` を並列 fetch → `URL.createObjectURL(blob)` で Blob URL 化してキャッシュ。
+  - `TelopBox` に `resolveTtsUrl(speaker, speech, gender)` 関数を props で渡し、useEffect 内で URL を解決。キャッシュ命中なら Blob URL（往復ゼロ）、未命中なら従来通り直 `/api/tts?...` URL。
+  - キャッシュキーは `speaker|gender|speech` の組合せ。同じキャラクターでも発言が変われば別 wav。`"pending"` センチネルで二重発火防止。`URL.revokeObjectURL` は Stage アンマウント時に一括解放。
+  - 「次へ」クリック後に体感ラグが大幅減少。`make verify-all` グリーン（backend 56 passed）。
 - 2026-06-14: T69（TTS 性別判定による話者プール分割）。
   - DECISIONS D17 を新規追加（D01 `CharacterRef.gender` 拡張も併記）。`docs/ARCHITECTURE.md` の `/api/tts` 入力欄に `gender` を追記。
   - backend: `app/models.py` に `Gender = Literal["male","female","robot"]` + `GenderClassification` Pydantic を追加。`AddCharacterResponse`, `CharacterRef`, `CharacterTemplate` に `gender` フィールドを伝播。`app/gemini_client.classify_gender` を追加（responseSchema で enum 強制 / 失敗時 'male' フォールバック）。`app/routes.py` の `/api/add_character` で `classify_gender` を呼び出し、`/api/tts` に `gender` クエリパラメータを追加。`app/tts.py` を `SPEAKER_POOLS = {male:(11,12,13), female:(2,8,46), robot:(47,)}` プール方式に書き換え、`get_speaker_id(name, gender)` が性別プール内でハッシュ分散。`gender=None` は全プール総和フォールバック（旧 State 互換）。`app/character_templates.py` の `_TEMPLATE_CATALOG` を `(slug, name, gender)` に拡張。

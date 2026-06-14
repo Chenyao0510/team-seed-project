@@ -5,6 +5,7 @@ import type {
   DebateState,
   DebateStatus,
   ChatHistoryEntry,
+  Gender,
   ReflectionSummary,
   AgentThought,
 } from "../types/state";
@@ -54,6 +55,25 @@ const USER_AVATAR_FALLBACK = "https://placeholder.example/user.png";
 // 「ユーザー介入」として扱い、次の AI がそれに反応する: DECISIONS D11）。
 const USER_SPEAKER = "あなた";
 
+// T70: TTS プリフェッチ用ヘルパー。speaker + speech + gender を一意なキーにする。
+// （同じキャラクターでも発言が違えば別 wav なので speech も含める）
+function buildTtsUrl(
+  speaker: string,
+  speech: string,
+  gender: Gender | undefined,
+): string {
+  const genderQuery = gender ? `&gender=${gender}` : "";
+  return `${API_BASE_URL}/api/tts?text=${encodeURIComponent(speech)}&character_name=${encodeURIComponent(speaker)}${genderQuery}`;
+}
+
+function ttsCacheKey(
+  speaker: string,
+  speech: string,
+  gender: Gender | undefined,
+): string {
+  return `${speaker}|${gender ?? ""}|${speech}`;
+}
+
 // Reflection Turn (T26/T27): 何ターンごとに一時停止して Reflection Panel を表示するか。
 // turn_count は backend が `/api/next_turn` のたびに+1して返す値（ユーザー介入はカウントしない）。
 const REFLECTION_INTERVAL = 3;
@@ -80,6 +100,72 @@ export function DebateStage({
   const [reflectionLoading, setReflectionLoading] = useState(false);
   const [prefetchedReflection, setPrefetchedReflection] =
     useState<ReflectionSummary | null>(null);
+
+  // T70: TTS プリフェッチ・キャッシュ。`think` が返した agent_thoughts の中で
+  // willingness=true な候補全員ぶんを並列に fetch → Blob URL に変換して保持する。
+  // 「次へ」クリックで決まった speaker のキャッシュが命中していれば、ネットワーク往復
+  // ゼロで即再生できる（ハッカソン尺の体験向上が最優先）。
+  // Map<cacheKey, blobUrl | "pending">。"pending" は二重発火防止のセンチネル。
+  const ttsCacheRef = useRef<Map<string, string>>(new Map());
+
+  // Stage アンマウント時に Blob URL を解放する。途中で発言が切り替わっても、
+  // 既に作った Blob URL は他キャラの prefetch から参照される可能性があるため、
+  // 個別キーごとには revoke せず Stage 一括で破棄する（生存時間 = 議論セッション中）。
+  useEffect(() => {
+    const cache = ttsCacheRef.current;
+    return () => {
+      for (const url of cache.values()) {
+        if (url && url !== "pending") {
+          URL.revokeObjectURL(url);
+        }
+      }
+      cache.clear();
+    };
+  }, []);
+
+  const resolveTtsUrl = useCallback(
+    (speaker: string, speech: string, gender: Gender | undefined): string => {
+      const cached = ttsCacheRef.current.get(ttsCacheKey(speaker, speech, gender));
+      if (cached && cached !== "pending") {
+        return cached;
+      }
+      return buildTtsUrl(speaker, speech, gender);
+    },
+    [],
+  );
+
+  // T70: agent_thoughts (think の結果) が乗ったら、willing な候補全員ぶんの TTS を
+  // バックグラウンドで取りに行く。fetch → blob → URL.createObjectURL でキャッシュに
+  // 保存。失敗時はキーを消して、本番再生時の通常 URL fallback に任せる。
+  useEffect(() => {
+    const thoughts = state.agent_thoughts;
+    if (!thoughts) return;
+    const cache = ttsCacheRef.current;
+
+    for (const [name, thought] of Object.entries(thoughts)) {
+      if (!thought.willingness_to_speak) continue;
+      const speech = thought.current_speech;
+      if (!speech) continue;
+      const gender = state.characters.find((c) => c.name === name)?.gender;
+      const key = ttsCacheKey(name, speech, gender);
+      if (cache.has(key)) continue;
+      cache.set(key, "pending");
+
+      void (async () => {
+        try {
+          const response = await fetch(buildTtsUrl(name, speech, gender));
+          if (!response.ok) throw new Error(`tts prefetch ${response.status}`);
+          const blob = await response.blob();
+          // prefetch 完了より先にアンマウントが走った場合は cache が空になっている
+          if (!cache.has(key)) return;
+          cache.set(key, URL.createObjectURL(blob));
+        } catch (err) {
+          console.warn(`[T70] TTS prefetch failed for ${name}:`, err);
+          cache.delete(key);
+        }
+      })();
+    }
+  }, [state.agent_thoughts, state.characters]);
 
   const existingNames = state.characters.map((c) => c.name);
 
@@ -304,6 +390,7 @@ export function DebateStage({
                   userName={state.user.name}
                   agentThoughts={state.agent_thoughts}
                   characters={state.characters}
+                  resolveTtsUrl={resolveTtsUrl}
                 />
                 {/* 進行ボタンをテロップ横か下に配置 */}
                 <div className="mx-auto mt-4 flex max-w-3xl justify-end">
@@ -1071,6 +1158,13 @@ interface TelopBoxProps {
   agentThoughts?: Record<string, AgentThought>;
   // T69: TTS の話者プール選択用に発言者の gender を解決するため。
   characters: Character[];
+  // T70: 親 (DebateStage) が保持する TTS プリフェッチキャッシュ参照。
+  // 命中していれば Blob URL、未命中なら通常 `/api/tts` URL を返す。
+  resolveTtsUrl: (
+    speaker: string,
+    speech: string,
+    gender: Gender | undefined,
+  ) => string;
 }
 
 function TelopBox({
@@ -1083,6 +1177,7 @@ function TelopBox({
   userName = "あなた",
   agentThoughts,
   characters,
+  resolveTtsUrl,
 }: TelopBoxProps) {
   const empty = speech.trim().length === 0;
   const [draft, setDraft] = useState("");
@@ -1101,10 +1196,10 @@ function TelopBox({
 
     // AIの発言かつ発言が存在する場合のみ自動再生を試みる
     if (!empty && speaker && speaker !== USER_SPEAKER && speaker !== userName) {
-      // T69: 発言者の gender を URL に付与して性別プールから話者を選んでもらう。
+      // T69: 発言者の gender を解決する。T70: think 中にプリフェッチ済みなら Blob URL、
+      // 未命中なら通常 `/api/tts?...` URL（ネットワーク往復あり）が返る。
       const gender = characters.find((c) => c.name === speaker)?.gender;
-      const genderQuery = gender ? `&gender=${gender}` : "";
-      const url = `${API_BASE_URL}/api/tts?text=${encodeURIComponent(speech)}&character_name=${encodeURIComponent(speaker)}${genderQuery}`;
+      const url = resolveTtsUrl(speaker, speech, gender);
       const audio = new Audio(url);
       audioRef.current = audio;
 
@@ -1128,7 +1223,7 @@ function TelopBox({
         audioRef.current = null;
       }
     };
-  }, [speech, speaker, userName, empty, characters]);
+  }, [speech, speaker, userName, empty, characters, resolveTtsUrl]);
 
   const handlePlayClick = () => {
     if (audioRef.current) {

@@ -395,10 +395,21 @@ export function DebateStage({
   }, []);
 
   return (
-    <div className="relative flex min-h-screen flex-col overflow-hidden bg-slate-900 text-slate-100">
+    <div
+      className="relative flex min-h-screen flex-col overflow-hidden text-slate-100"
+      style={{
+        background: 'radial-gradient(ellipse 120% 80% at 50% 40%, #0f1e1a 0%, #0a1628 40%, #060d18 100%)',
+      }}
+    >
+      {/* Ambient glow — top (pure emerald, strong) */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 z-30 h-48"
+        style={{
+          background: 'radial-gradient(ellipse 75% 100% at 50% 0%, rgba(52, 211, 153, 0.28) 0%, rgba(16, 185, 129, 0.12) 40%, transparent 100%)',
+        }}
+      />
       <Header
         theme={state.theme}
-        currentTopic={state.current_topic}
         onOpenHistory={handleOpenHistory}
       />
 
@@ -414,6 +425,20 @@ export function DebateStage({
           <section className="flex flex-1 flex-col relative">
             {/* 立ち絵レイヤー（ギャルゲー風配置） */}
             <div className="absolute inset-x-0 bottom-20 top-0 flex justify-center items-end pointer-events-none z-0">
+              {/* Stage floor spotlight — characters stand in emerald light */}
+              <div
+                className="absolute inset-x-0 bottom-0 h-48 pointer-events-none"
+                style={{
+                  background: 'radial-gradient(ellipse 70% 100% at 50% 100%, rgba(52, 211, 153, 0.18) 0%, rgba(16, 185, 129, 0.06) 50%, transparent 100%)',
+                }}
+              />
+              {/* Subtle vignette on sides */}
+              <div
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  background: 'linear-gradient(90deg, rgba(6, 13, 24, 0.55) 0%, transparent 25%, transparent 75%, rgba(6, 13, 24, 0.55) 100%)',
+                }}
+              />
               <CharactersRow
                 characters={state.characters}
                 isActive={(name) =>
@@ -787,38 +812,101 @@ function ChatHistoryItem({ entry }: { entry: ChatHistoryEntry }) {
 
 interface HeaderProps {
   theme: string;
-  currentTopic: string;
   onOpenHistory?: () => void;
 }
 
-function Header({ theme, currentTopic, onOpenHistory }: HeaderProps) {
+function Header({ theme, onOpenHistory }: HeaderProps) {
   return (
-    <header className="grid grid-cols-3 items-center border-b border-slate-700 bg-slate-900/80 px-6 py-3 backdrop-blur">
-      <p
-        data-testid="header-topic"
-        className="truncate text-sm text-emerald-300"
-        title={currentTopic}
-      >
-        {currentTopic ? `論点: ${currentTopic}` : "論点: 未設定"}
-      </p>
-      <h1
-        data-testid="header-theme"
-        className="truncate text-center text-lg font-semibold tracking-wide"
-        title={theme}
-      >
-        {theme}
-      </h1>
-      <div className="text-right">
+    <header className="relative border-b border-emerald-900/30 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-900/90 px-6 py-5 backdrop-blur-sm">
+      {/* Top accent glow line */}
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-300/70 to-transparent" />
+      <div
+        className="absolute inset-x-0 top-0 h-10 pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse 50% 100% at 50% 0%, rgba(251,191,36,0.12) 0%, transparent 100%)' }}
+      />
+
+      <div className="flex items-center gap-5">
+        {/* Left ornament — Zelda-style golden serif label */}
+        <div className="hidden sm:flex items-center gap-3 shrink-0">
+          <span className="h-px w-12 bg-gradient-to-r from-transparent to-amber-300/50" />
+          <span
+            className="select-none uppercase"
+            style={{
+              fontFamily: "'Noto Serif JP', 'Georgia', serif",
+              fontSize: '1.15rem',
+              fontWeight: 700,
+              letterSpacing: '0.38em',
+              color: 'rgba(251, 191, 36, 0.95)',
+              textShadow: '0 0 22px rgba(251, 191, 36, 0.50), 0 0 50px rgba(251, 191, 36, 0.18)',
+            }}
+          >
+            Agora
+          </span>
+          <span className="h-px w-8 bg-gradient-to-r from-amber-300/40 to-transparent" />
+        </div>
+
+        {/* Theme title */}
+        <h1
+          data-testid="header-theme"
+          className="flex-1 text-center leading-snug"
+          style={{
+            fontFamily: "'Noto Serif JP', 'Georgia', serif",
+            fontSize: 'clamp(1rem, 2vw, 1.4rem)',
+            fontWeight: 700,
+            letterSpacing: '0.04em',
+            color: '#e2e8f0',
+            textShadow: '0 0 28px rgba(52, 211, 153, 0.18), 0 0 8px rgba(251, 191, 36, 0.08), 0 1px 2px rgba(0,0,0,0.5)',
+          }}
+        >
+          {theme}
+        </h1>
+
+        {/* Right ornament */}
+        <div className="hidden sm:flex items-center gap-3 shrink-0">
+          <span className="h-px w-8 bg-gradient-to-l from-amber-300/40 to-transparent" />
+          <span
+            className="select-none"
+            style={{
+              color: 'rgba(251, 191, 36, 0.70)',
+              textShadow: '0 0 14px rgba(251, 191, 36, 0.30)',
+              fontSize: '0.65rem',
+            }}
+          >
+            ◆
+          </span>
+          <span className="h-px w-12 bg-gradient-to-l from-transparent to-amber-300/50" />
+        </div>
+
+        {/* History button — Sheikah-style */}
         <button
           type="button"
           onClick={onOpenHistory}
           disabled={!onOpenHistory}
           data-testid="open-history-button"
-          className="rounded border border-slate-600 px-3 py-1 text-sm text-slate-300 hover:border-slate-400 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className="shrink-0 group relative overflow-hidden rounded-sm px-4 py-1.5 text-xs font-medium tracking-wider uppercase transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-40"
+          style={{
+            fontFamily: "'Noto Serif JP', 'Georgia', serif",
+            border: '1px solid rgba(251, 191, 36, 0.40)',
+            color: 'rgba(251, 191, 36, 0.90)',
+            background: 'linear-gradient(180deg, rgba(251,191,36,0.08) 0%, rgba(251,191,36,0.02) 100%)',
+            textShadow: '0 0 12px rgba(251, 191, 36, 0.25)',
+            boxShadow: '0 0 16px rgba(251, 191, 36, 0.06)',
+          }}
         >
-          過去ログ
+          {/* Hover glow overlay */}
+          <span
+            className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+            style={{
+              background: 'radial-gradient(ellipse at center, rgba(251,191,36,0.08) 0%, transparent 70%)',
+              boxShadow: 'inset 0 0 12px rgba(251,191,36,0.06)',
+            }}
+          />
+          <span className="relative">過去ログ</span>
         </button>
       </div>
+
+      {/* Bottom accent line */}
+      <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-300/40 to-transparent" />
     </header>
   );
 }
@@ -848,18 +936,43 @@ function PointsPanel({ points, focusPoint = "" }: PointsPanelProps) {
   return (
     <aside
       data-testid="points-panel"
-      className="w-56 shrink-0 rounded-lg border border-slate-700 bg-slate-800/40 p-4"
+      className="w-56 shrink-0 rounded-xl p-4"
+      style={{
+        background: 'linear-gradient(160deg, rgba(15,30,26,0.85) 0%, rgba(10,22,40,0.80) 100%)',
+        border: '1px solid rgba(52, 211, 153, 0.20)',
+        boxShadow: '0 0 24px rgba(52, 211, 153, 0.07), inset 0 0 20px rgba(52, 211, 153, 0.03)',
+        backdropFilter: 'blur(12px)',
+      }}
     >
+      {/* Header */}
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-xs uppercase tracking-wider text-slate-400">
-          論点
-        </h2>
+        <div className="flex items-center gap-2">
+          <span
+            className="h-3 w-0.5 rounded-full"
+            style={{ background: 'rgba(52,211,153,0.70)', boxShadow: '0 0 6px rgba(52,211,153,0.50)' }}
+          />
+          <h2
+            className="text-xs uppercase tracking-widest"
+            style={{
+              color: 'rgba(110, 231, 183, 0.80)',
+              textShadow: '0 0 8px rgba(52,211,153,0.25)',
+              letterSpacing: '0.15em',
+            }}
+          >
+            論点
+          </h2>
+        </div>
         <DiffBadge added={newItems.length} removed={removedItems.length} />
       </div>
+      {/* Divider */}
+      <div
+        className="mb-3 h-px"
+        style={{ background: 'linear-gradient(90deg, rgba(52,211,153,0.25) 0%, rgba(52,211,153,0.05) 100%)' }}
+      />
       {points.length === 0 ? (
-        <p className="text-sm text-slate-500">まだ論点が出ていません</p>
+        <p className="text-sm" style={{ color: 'rgba(148,163,184,0.50)' }}>まだ論点が出ていません</p>
       ) : (
-        <ul data-testid="points-list" className="space-y-2">
+        <ul data-testid="points-list" className="space-y-1.5">
           <AnimatePresence initial={false}>
             {points.map((p) => {
               const isNew = !previousSet.has(p);
@@ -922,10 +1035,21 @@ function PointItem({ point, isNew, isFocused = false }: PointItemProps) {
         scale: 0.92,
         transition: { duration: POINTS_EXIT_DURATION, ease: "easeIn" },
       }}
-      className={`relative flex items-center gap-2 overflow-hidden rounded px-3 py-2 text-sm ${
-        isFocused && isPresent ? "ring-2 ring-emerald-400/80" : ""
+      className={`relative flex items-center gap-2 overflow-hidden rounded-lg px-3 py-2 text-sm ${
+        isFocused && isPresent
+          ? 'ring-1'
+          : ''
       }`}
-      style={{ willChange: "transform, opacity, box-shadow, background-color" }}
+      style={{
+        willChange: 'transform, opacity, box-shadow, background-color',
+        ...(isFocused && isPresent ? {
+          ringColor: 'rgba(52,211,153,0.60)',
+          boxShadow: '0 0 10px rgba(52,211,153,0.18), inset 0 0 6px rgba(52,211,153,0.05)',
+          border: '1px solid rgba(52,211,153,0.35)',
+        } : {
+          border: '1px solid transparent',
+        }),
+      }}
     >
       <span
         className={
@@ -1164,15 +1288,28 @@ function CharactersRow({
               )}
 
               {/* 立ち絵描画ボックス: 列の中で 100% 高、絶対配置の img が中央下から立ち上がる */}
-              <div className="relative w-full h-full overflow-visible drop-shadow-2xl">
+              <div className="relative w-full h-full overflow-visible"
+                style={{
+                  filter: active
+                    ? 'drop-shadow(0 0 18px rgba(52,211,153,0.55)) drop-shadow(0 0 40px rgba(52,211,153,0.20))'
+                    : 'none',
+                }}
+              >
                 <img
                   src={c.avatar_url}
                   alt={c.name}
                   className="absolute bottom-0 left-1/2 -translate-x-1/2 h-full w-auto max-w-none object-contain object-bottom select-none pointer-events-none"
                 />
-                {/* 足元に影や光を追加 */}
+                {/* 足元のグロウ光 */}
                 {active && (
-                  <div className="absolute -bottom-4 left-1/2 w-3/4 -translate-x-1/2 h-10 bg-emerald-400/35 blur-2xl rounded-[100%]" />
+                  <div
+                    className="absolute -bottom-4 left-1/2 -translate-x-1/2 h-12 pointer-events-none"
+                    style={{
+                      width: '90%',
+                      background: 'radial-gradient(ellipse at center, rgba(52,211,153,0.55) 0%, rgba(52,211,153,0.18) 40%, transparent 75%)',
+                      filter: 'blur(6px)',
+                    }}
+                  />
                 )}
               </div>
               {/* T5B: 立ち絵下のラベル（名前 / 発言中ステータス）はすべて非表示 */}
@@ -1553,6 +1690,7 @@ function ActionBar({
   const interventionButtonsDisabled =
     !interventionEnabled || intervention !== null;
 
+  // 異議系ボタン（琥ⅺ色グループ）
   const interventionButton = (
     kind: InterventionKind,
     label: string,
@@ -1563,7 +1701,30 @@ function ActionBar({
       data-testid={testId}
       onClick={() => onSelectIntervention(kind)}
       disabled={interventionButtonsDisabled}
-      className="rounded-md border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+      className="group relative rounded-md px-4 py-2 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-35"
+      style={{
+        border: '1px solid rgba(251, 191, 36, 0.35)',
+        color: interventionButtonsDisabled ? 'rgba(251,191,36,0.4)' : 'rgba(251, 191, 36, 0.90)',
+        background: 'rgba(251, 191, 36, 0.04)',
+        boxShadow: interventionButtonsDisabled
+          ? 'none'
+          : '0 0 12px rgba(251,191,36,0.15), inset 0 0 8px rgba(251,191,36,0.04)',
+        textShadow: '0 0 8px rgba(251,191,36,0.20)',
+      }}
+      onMouseEnter={(e) => {
+        if (!interventionButtonsDisabled) {
+          (e.currentTarget as HTMLButtonElement).style.boxShadow =
+            '0 0 22px rgba(251,191,36,0.40), inset 0 0 14px rgba(251,191,36,0.10)';
+          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(251,191,36,0.70)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!interventionButtonsDisabled) {
+          (e.currentTarget as HTMLButtonElement).style.boxShadow =
+            '0 0 12px rgba(251,191,36,0.15), inset 0 0 8px rgba(251,191,36,0.04)';
+          (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(251,191,36,0.35)';
+        }
+      }}
     >
       {label}
     </button>
@@ -1572,26 +1733,78 @@ function ActionBar({
   return (
     <nav
       data-testid="action-bar"
-      className="flex flex-wrap items-center justify-center gap-3 border-t border-slate-700 pt-4"
+      className="flex flex-wrap items-center justify-center gap-3 border-t pt-4"
+      style={{ borderColor: 'rgba(52,211,153,0.15)' }}
     >
+      {/* 人物追加：ヴァイオレット系 */}
       <button
         type="button"
         data-testid="action-add-character"
         onClick={onOpenAddCharacter}
         disabled={!addCharacterEnabled || intervention !== null}
-        className="rounded-md border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:border-emerald-400 hover:text-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded-md px-4 py-2 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-35"
+        style={{
+          border: '1px solid rgba(167, 139, 250, 0.40)',
+          color: (!addCharacterEnabled || intervention !== null) ? 'rgba(167,139,250,0.4)' : 'rgba(196, 181, 253, 0.90)',
+          background: 'rgba(139, 92, 246, 0.05)',
+          boxShadow: (!addCharacterEnabled || intervention !== null)
+            ? 'none'
+            : '0 0 14px rgba(139,92,246,0.20), inset 0 0 10px rgba(139,92,246,0.06)',
+          textShadow: '0 0 8px rgba(167,139,250,0.25)',
+        }}
+        onMouseEnter={(e) => {
+          const el = e.currentTarget as HTMLButtonElement;
+          if (!el.disabled) {
+            el.style.boxShadow = '0 0 24px rgba(139,92,246,0.45), inset 0 0 16px rgba(139,92,246,0.12)';
+            el.style.borderColor = 'rgba(167,139,250,0.75)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          const el = e.currentTarget as HTMLButtonElement;
+          if (!el.disabled) {
+            el.style.boxShadow = '0 0 14px rgba(139,92,246,0.20), inset 0 0 10px rgba(139,92,246,0.06)';
+            el.style.borderColor = 'rgba(167,139,250,0.40)';
+          }
+        }}
       >
         人物追加
       </button>
+
+      {/* 異議系：琥ⅺ色グループ */}
       {interventionButton("objection", "異議を唱える", "action-objection")}
       {interventionButton("viewpoint", "観点追加", "action-viewpoint")}
       {interventionButton("question", "質問", "action-question")}
+
+      {/* 議論を整理：エメラルド系 */}
       <button
         type="button"
         data-testid="action-summarize"
         onClick={onSummarize}
         disabled={!summarizeEnabled || intervention !== null || isSummarizing}
-        className="rounded-md border border-emerald-500 bg-emerald-600/10 px-4 py-2 text-sm font-semibold text-emerald-200 hover:border-emerald-300 hover:bg-emerald-500/20 hover:text-emerald-100 disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded-md px-4 py-2 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-35"
+        style={{
+          border: '1px solid rgba(52, 211, 153, 0.40)',
+          color: (!summarizeEnabled || intervention !== null || isSummarizing) ? 'rgba(52,211,153,0.4)' : 'rgba(110, 231, 183, 0.95)',
+          background: 'rgba(52, 211, 153, 0.05)',
+          boxShadow: (!summarizeEnabled || intervention !== null || isSummarizing)
+            ? 'none'
+            : '0 0 14px rgba(52,211,153,0.22), inset 0 0 10px rgba(52,211,153,0.06)',
+          textShadow: '0 0 8px rgba(52,211,153,0.25)',
+        }}
+        onMouseEnter={(e) => {
+          const el = e.currentTarget as HTMLButtonElement;
+          if (!el.disabled) {
+            el.style.boxShadow = '0 0 24px rgba(52,211,153,0.45), inset 0 0 16px rgba(52,211,153,0.12)';
+            el.style.borderColor = 'rgba(52,211,153,0.75)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          const el = e.currentTarget as HTMLButtonElement;
+          if (!el.disabled) {
+            el.style.boxShadow = '0 0 14px rgba(52,211,153,0.22), inset 0 0 10px rgba(52,211,153,0.06)';
+            el.style.borderColor = 'rgba(52,211,153,0.40)';
+          }
+        }}
       >
         {isSummarizing ? "整理中..." : "議論を整理する"}
       </button>

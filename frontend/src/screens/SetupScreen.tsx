@@ -320,7 +320,7 @@ function UserAvatarField({ avatarUrl, onChange, onGeneratingChange }: UserAvatar
                   void handleGenerate()
                 }
               }}
-              placeholder="例: 探検家風の自分"
+              placeholder="例: 探検家風の男性"
               className="flex-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-emerald-500 focus:outline-none"
             />
             <button

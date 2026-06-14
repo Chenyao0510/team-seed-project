@@ -83,6 +83,10 @@ class AgentThoughtOutput(BaseModel):
     body: str = Field(description="hook に続く主張本体。hook+body 合計60文字以内")
     reasoning_target: str = Field(default="", description="反応した相手（話者名＋要点）")
     concepts: list[str] = Field(default_factory=list, description="body 内の強調語を1〜2個")
+    focus_point: str = Field(
+        default="", description="深掘り/反論/明確化/接続の対象に選んだ既存論点（完全一致）。新規論点時は空"
+    )
+    move_type: Literal["deepen", "challenge", "clarify", "connect", "new"] = "deepen"
     current_points: list[str]
     current_topic: str
     emotion: str = "neutral"
@@ -108,6 +112,8 @@ class DebateState(BaseModel):
     current_body: str = ""
     current_reasoning_target: str = ""
     current_concepts: list[str] = Field(default_factory=list)
+    current_focus_point: str = ""
+    current_move_type: str = ""
     emotion: str = "neutral"
     current_points: list[str]
     characters: list[CharacterRef] = Field(min_length=1)

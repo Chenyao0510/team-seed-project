@@ -49,6 +49,16 @@ const INTERVENTION_LABEL: Record<InterventionKind, string> = {
   question: "質問",
 };
 
+// 深掘り優先ルール (DEPTH FIRST DISCUSSION RULE) で各発言が既存の論点に対して
+// 行う「手」のラベル。current_move_type の表示に使う。
+const MOVE_TYPE_LABEL: Record<string, string> = {
+  deepen: "深掘り",
+  challenge: "反論",
+  clarify: "明確化",
+  connect: "接続",
+  new: "新規",
+};
+
 // ユーザーがアバター未登録 (state.user.avatar_url が空) のときのフォールバック表示 (T58)。
 const USER_AVATAR_FALLBACK = "https://placeholder.example/user.png";
 
@@ -193,6 +203,8 @@ export function DebateStage({
       current_body: interventionText,
       current_reasoning_target: "",
       current_concepts: [],
+      current_focus_point: "",
+      current_move_type: "",
       status: "speaking",
       agent_thoughts: {},
     });
@@ -393,7 +405,10 @@ export function DebateStage({
       <main className="relative flex flex-1 flex-col gap-6 px-6 py-6 overflow-hidden">
         <div className="flex flex-1 gap-6 relative z-10">
           <div className="shrink-0 pointer-events-auto">
-            <PointsPanel points={state.current_points} />
+            <PointsPanel
+              points={state.current_points}
+              focusPoint={state.current_focus_point}
+            />
           </div>
 
           <section className="flex flex-1 flex-col relative">
@@ -426,6 +441,7 @@ export function DebateStage({
                   body={state.current_body}
                   reasoningTarget={state.current_reasoning_target}
                   concepts={state.current_concepts}
+                  moveType={state.current_move_type}
                   status={isGenerating ? "thinking" : state.status}
                   intervention={intervention}
                   onCancel={() => setIntervention(null)}
@@ -809,9 +825,10 @@ function Header({ theme, currentTopic, onOpenHistory }: HeaderProps) {
 
 interface PointsPanelProps {
   points: string[];
+  focusPoint?: string;
 }
 
-function PointsPanel({ points }: PointsPanelProps) {
+function PointsPanel({ points, focusPoint = "" }: PointsPanelProps) {
   // 「props 由来の派生 state」パターン。points が変わった瞬間にだけ、直前のスナップ
   // ショットを `previousPoints` に退避して再描画する。マウント直後は previousPoints
   // = points なので「全てが NEW」扱いにならない（初回描画で過剰演出しない）。
@@ -846,7 +863,10 @@ function PointsPanel({ points }: PointsPanelProps) {
           <AnimatePresence initial={false}>
             {points.map((p) => {
               const isNew = !previousSet.has(p);
-              return <PointItem key={p} point={p} isNew={isNew} />;
+              const isFocused = !isNew && p === focusPoint;
+              return (
+                <PointItem key={p} point={p} isNew={isNew} isFocused={isFocused} />
+              );
             })}
           </AnimatePresence>
         </ul>
@@ -858,9 +878,10 @@ function PointsPanel({ points }: PointsPanelProps) {
 interface PointItemProps {
   point: string;
   isNew: boolean;
+  isFocused?: boolean;
 }
 
-function PointItem({ point, isNew }: PointItemProps) {
+function PointItem({ point, isNew, isFocused = false }: PointItemProps) {
   const isPresent = useIsPresent();
   return (
     <motion.li
@@ -901,7 +922,9 @@ function PointItem({ point, isNew }: PointItemProps) {
         scale: 0.92,
         transition: { duration: POINTS_EXIT_DURATION, ease: "easeIn" },
       }}
-      className="relative flex items-center gap-2 overflow-hidden rounded px-3 py-2 text-sm"
+      className={`relative flex items-center gap-2 overflow-hidden rounded px-3 py-2 text-sm ${
+        isFocused && isPresent ? "ring-2 ring-emerald-400/80" : ""
+      }`}
       style={{ willChange: "transform, opacity, box-shadow, background-color" }}
     >
       <span
@@ -914,6 +937,14 @@ function PointItem({ point, isNew }: PointItemProps) {
         {point}
       </span>
       {isNew && isPresent && <NewBadge />}
+      {isFocused && isPresent && (
+        <span
+          data-testid="points-focus-badge"
+          className="whitespace-nowrap rounded-full bg-emerald-400/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300"
+        >
+          深掘り中
+        </span>
+      )}
     </motion.li>
   );
 }
@@ -1197,6 +1228,7 @@ interface TelopBoxProps {
   body?: string;
   reasoningTarget?: string;
   concepts?: string[];
+  moveType?: string;
   status: DebateStatus;
   intervention: InterventionKind | null;
   onCancel: () => void;
@@ -1221,6 +1253,7 @@ function TelopBox({
   body = "",
   reasoningTarget = "",
   concepts = [],
+  moveType = "",
   status,
   intervention,
   onCancel,
@@ -1451,12 +1484,21 @@ function TelopBox({
           {/* hook/body 構造があればタイプライター演出、無ければ speech を平文表示 (D18) */}
           {hook || body ? (
             <div data-testid="telop-speech" className="flex flex-col gap-1">
-              {reasoningTarget && (
-                <p
-                  data-testid="telop-reasoning"
-                  className="text-xs font-medium text-amber-300/80"
-                >
-                  → {reasoningTarget} へ
+              {(reasoningTarget || (moveType && MOVE_TYPE_LABEL[moveType])) && (
+                <p className="flex items-center gap-2 text-xs font-medium text-amber-300/80">
+                  {moveType && MOVE_TYPE_LABEL[moveType] && (
+                    <span
+                      data-testid="telop-move-badge"
+                      className="rounded-full bg-emerald-400/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300"
+                    >
+                      {MOVE_TYPE_LABEL[moveType]}
+                    </span>
+                  )}
+                  {reasoningTarget && (
+                    <span data-testid="telop-reasoning">
+                      → {reasoningTarget} へ
+                    </span>
+                  )}
                 </p>
               )}
               {hook && (

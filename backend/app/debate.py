@@ -67,7 +67,6 @@ def advance_turn(state: DebateState) -> DebateState:
         thoughts = thought_state.agent_thoughts
         chat_history = thought_state.chat_history
 
-    roster_names = [c.name for c in state.characters]
     willing_names = [name for name, t in thoughts.items() if t.willingness_to_speak]
 
     # 直前の発言者を除外して、なるべく違う人に発言させる

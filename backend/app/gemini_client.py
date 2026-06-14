@@ -265,7 +265,8 @@ def _build_agent_thought_prompt(state: DebateState, character_name: str) -> str:
         "    * 順序も前ターンの並び順を尊重し、新規論点はリスト末尾に追加すること\n"
         "- current_topic: 現在議論されている小テーマを、名詞句を「/」で区切った"
         "10〜20文字程度の短い表現にすること。\n"
-        "- emotion: 発言内容に合わせた表情を neutral, happy, sad, angry, surprised, thinking から選んでください。\n"
+        "- emotion: 発言内容に合わせた表情を neutral, happy, sad, angry, "
+        "surprised, thinking から選んでください。\n"
     )
 
 

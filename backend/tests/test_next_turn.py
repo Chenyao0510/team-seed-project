@@ -156,14 +156,29 @@ def test_next_turn_falls_back_on_gemini_failure(monkeypatch):
 def test_next_turn_propagates_emotion_from_llm_output(monkeypatch):
     """LLM が返した emotion を新 State と chat_history (前ターン分) に伝播する。"""
     state = load_debate_state()
-    fake_output = NextTurnLLMOutput(
-        active_character="Jobs",
-        current_speech="やってみればわかる。",
-        emotion="confident",
-        current_points=state["current_points"],
-        current_topic=state["current_topic"],
+
+    def mock_generate_agent_thought(s, name):
+        if name == "Jobs":
+            return AgentThoughtOutput(
+                willingness_to_speak=True,
+                thought="思考",
+                current_speech="やってみればわかる。",
+                current_points=s.current_points,
+                current_topic=s.current_topic,
+                emotion="confident",
+            )
+        return AgentThoughtOutput(
+            willingness_to_speak=False,
+            thought="見守り",
+            current_speech="",
+            current_points=s.current_points,
+            current_topic=s.current_topic,
+            emotion="neutral",
+        )
+
+    monkeypatch.setattr(
+        gemini_client, "generate_agent_thought", mock_generate_agent_thought
     )
-    monkeypatch.setattr(gemini_client, "generate_next_turn", lambda s: fake_output)
 
     response = client.post("/api/next_turn", json=state)
     assert response.status_code == 200
@@ -183,7 +198,7 @@ def test_next_turn_falls_back_to_neutral_emotion_on_failure(monkeypatch):
     def _raise(*args, **kwargs):
         raise RuntimeError("gemini unavailable")
 
-    monkeypatch.setattr(gemini_client, "generate_next_turn", _raise)
+    monkeypatch.setattr(gemini_client, "generate_agent_thought", _raise)
     response = client.post("/api/next_turn", json=state)
     assert response.status_code == 200
     assert response.json()["emotion"] == "neutral"

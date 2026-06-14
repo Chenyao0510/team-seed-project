@@ -201,8 +201,12 @@ export function DebateStage({
   );
 
   // 最新の intervention 状態を参照するための Ref
-  const interventionRef = useRef<InterventionKind | null>(intervention);
+  // think() は非同期で、await 中に intervention が変化することがあるため、
+  // 完了時点で最新値を参照できるよう Ref に同期しておく
+  const interventionRef = useRef<InterventionKind | null>(null);
+  // eslint-disable-next-line react-hooks/immutability
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability
     interventionRef.current = intervention;
   }, [intervention]);
 

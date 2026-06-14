@@ -6,9 +6,10 @@ import type { Gender } from '../types/state'
 export interface SetupMember {
   name: string
   avatarUrl: string | null
-  // T69: TTS 話者プール用。`/api/add_character` レスポンスから受け取った値、
-  // またはテンプレに静的定義された値を保持する。avatar 解決と同タイミングでセット。
+  // T69: TTS 話者プール用。`/api/add_character` レスポンスまたはテンプレイトに静的定義された値。
   gender?: Gender
+  // T72: 発言生成プロンプト用ペルソナ。
+  persona?: string
 }
 
 export interface SetupResult {
@@ -47,10 +48,10 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
 
     setLoadingMembers((prev) => new Set(prev).add(name))
     addCharacter(name)
-      .then(({ avatar_url, gender }) => {
+      .then(({ avatar_url, gender, persona }) => {
         setMembers((prev) =>
           prev.map((m) =>
-            m.name === name ? { ...m, avatarUrl: avatar_url, gender } : m,
+            m.name === name ? { ...m, avatarUrl: avatar_url, gender, persona } : m,
           ),
         )
       })
@@ -80,6 +81,7 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
         name: template.name,
         avatarUrl: template.avatar_url,
         gender: template.gender,
+        persona: template.persona,
       },
     ])
   }
@@ -97,7 +99,7 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
         <h1 className="mb-2 text-4xl font-bold tracking-tight text-gray-900">
           議論をセットアップ
         </h1>
-        <p className="text-gray-500">
+        <p className="text-gray-400">
           テーマと、最初に参加させる人物を決めましょう。
         </p>
       </header>
@@ -105,7 +107,7 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div>
       <section className="mb-8">
-        <label htmlFor="theme" className="mb-2 block text-sm font-semibold text-gray-700">
+        <label htmlFor="theme" className="mb-2 block text-sm font-semibold text-gray-300">
           議論のテーマ
         </label>
         <input
@@ -119,7 +121,7 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
       </section>
 
       <section className="mb-10">
-        <label htmlFor="member" className="mb-2 block text-sm font-semibold text-gray-700">
+        <label htmlFor="member" className="mb-2 block text-sm font-semibold text-gray-300">
           初期メンバー（議論に参加させる人物 / 2 名以上）
         </label>
         <div className="mb-3 flex gap-2">
@@ -171,7 +173,7 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
                       <img
                         src={avatarUrl}
                         alt={`${name} のアバター`}
-                        className="h-full w-full object-cover"
+                        className="h-full w-full object-cover object-top"
                       />
                     ) : loadingMembers.has(name) ? (
                       <span
@@ -199,7 +201,7 @@ export function SetupScreen({ onSubmit }: SetupScreenProps) {
       </section>
 
       <section className="mb-6">
-        <label className="mb-2 block text-sm font-semibold text-gray-700">
+        <label className="mb-2 block text-sm font-semibold text-gray-900">
           あなたのアバター（任意）
         </label>
         <UserAvatarField
@@ -292,7 +294,7 @@ function UserAvatarField({ avatarUrl, onChange, onGeneratingChange }: UserAvatar
         className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gray-100 ring-2 ring-amber-300"
       >
         {avatarUrl ? (
-          <img src={avatarUrl} alt="あなたのアバター" className="h-full w-full object-cover" />
+          <img src={avatarUrl} alt="あなたのアバター" className="h-full w-full object-cover object-top" />
         ) : generating ? (
           <span
             data-testid="user-avatar-loading"
@@ -330,7 +332,7 @@ function UserAvatarField({ avatarUrl, onChange, onGeneratingChange }: UserAvatar
                   void handleGenerate()
                 }
               }}
-              placeholder="例: 探検家風の自分"
+              placeholder="例: 探検家風の男性"
               className="flex-1 rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-emerald-500 focus:outline-none"
             />
             <button

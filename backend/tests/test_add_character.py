@@ -39,6 +39,10 @@ def test_add_character_returns_avatar_url(monkeypatch, tmp_path):
     )
     # T69: classify_gender も同じ add_character フローで呼ばれる。実 Gemini を回さない。
     monkeypatch.setattr(gemini_client, "classify_gender", lambda name: "male")
+    # T72: generate_character_persona も呼ばれる。
+    monkeypatch.setattr(
+        gemini_client, "generate_character_persona", lambda name: "天下統一を志す、果断で短気な戦国武将。"
+    )
 
     response = client.post("/api/add_character", json={"name": "織田信長"})
 
@@ -48,6 +52,8 @@ def test_add_character_returns_avatar_url(monkeypatch, tmp_path):
     assert body["avatar_url"].endswith(".png")
     # T69: gender がレスポンスに乗ること
     assert body["gender"] == "male"
+    # T72: persona がレスポンスに乗ること
+    assert body["persona"] == "天下統一を志す、果断で短気な戦国武将。"
 
     saved_files = list(tmp_path.glob("*.png"))
     assert len(saved_files) == 1
@@ -74,6 +80,7 @@ def test_add_character_passes_reference_images_to_gemini(monkeypatch, tmp_path):
 
     monkeypatch.setattr(gemini_client, "generate_avatar_image", _capture)
     monkeypatch.setattr(gemini_client, "classify_gender", lambda name: "male")
+    monkeypatch.setattr(gemini_client, "generate_character_persona", lambda name: "")
 
     response = client.post("/api/add_character", json={"name": "Some Person"})
 
@@ -94,12 +101,15 @@ def test_add_character_falls_back_to_placeholder_on_gemini_failure(monkeypatch, 
 
     monkeypatch.setattr(gemini_client, "generate_avatar_image", _raise)
     monkeypatch.setattr(gemini_client, "classify_gender", lambda name: "male")
+    # T72: persona 生成失敗は best-effort のため routes 側で握り潰され、空文字が返る。
+    monkeypatch.setattr(gemini_client, "generate_character_persona", _raise)
 
     response = client.post("/api/add_character", json={"name": "プレースホルダー太郎"})
 
     assert response.status_code == 200
     body = response.json()
     assert body["avatar_url"].startswith(f"{PUBLIC_BASE_URL}/static/avatars/")
+    assert body["persona"] == ""
 
     saved_files = list(tmp_path.glob("*.png"))
     assert len(saved_files) == 1

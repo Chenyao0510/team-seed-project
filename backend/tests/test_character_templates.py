@@ -28,6 +28,8 @@ def test_character_templates_returns_only_existing_pngs(monkeypatch, tmp_path):
     assert obama["avatar_url"].startswith(f"{PUBLIC_BASE_URL}/static/templates/obama.png?v=")
     # T69: gender がレスポンスに乗ること
     assert obama["gender"] == "male"
+    # T62/D17: テンプレートは事前著述の persona を持つ
+    assert obama["persona"]
 
 
 def test_character_templates_returns_empty_when_no_pngs(monkeypatch, tmp_path):

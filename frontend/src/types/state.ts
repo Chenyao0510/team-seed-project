@@ -10,6 +10,8 @@ export interface Character {
   // T69: `/api/tts` 呼び出し時に性別プールから話者を選ぶ。
   // 旧 State との後方互換のため optional。
   gender?: Gender;
+  // T72 / D18: 人物像・口調・専門・価値観。発言生成プロンプトの色付け専用。
+  persona?: string;
 }
 
 export interface ChatHistoryEntry {
@@ -24,7 +26,10 @@ export type DebateStatus = "thinking" | "speaking" | "waiting";
 export interface AgentThought {
   willingness_to_speak: boolean;
   thought: string;
-  current_speech: string;
+  hook: string;
+  body: string;
+  reasoning_target: string;
+  concepts: string[];
   current_points: string[];
   current_topic: string;
   emotion: string;
@@ -42,7 +47,13 @@ export interface DebateState {
   current_topic: string;
   active_character: string;
   status: DebateStatus;
+  // current_speech は current_hook + current_body の合成（導出値）。TTS / archive 用。
   current_speech: string;
+  // 表示専用の構造化発言フィールド (D18)。
+  current_hook?: string;
+  current_body?: string;
+  current_reasoning_target?: string;
+  current_concepts?: string[];
   emotion: string;
   current_points: string[];
   characters: Character[];

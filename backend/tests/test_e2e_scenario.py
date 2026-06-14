@@ -16,9 +16,9 @@ from fastapi.testclient import TestClient
 
 from app import avatar_pipeline, gemini_client
 from app.models import (
+    AgentThoughtOutput,
     DebateState,
     IntegrationState,
-    NextTurnLLMOutput,
     ReflectionBlock,
     ReflectionStance,
     ReflectionSummary,
@@ -58,6 +58,8 @@ def test_full_scenario_state_survives_screen0_to_screen2(monkeypatch, tmp_path):
     )
     # T69: classify_gender も add_character フローで呼ばれる。テストでは固定値を返す。
     monkeypatch.setattr(gemini_client, "classify_gender", lambda name: "male")
+    # T72: generate_character_persona も同様。
+    monkeypatch.setattr(gemini_client, "generate_character_persona", lambda name: f"{name}の人物像")
 
     characters = []
     for name in roster_names:
@@ -67,7 +69,7 @@ def test_full_scenario_state_survives_screen0_to_screen2(monkeypatch, tmp_path):
         avatar_url = body["avatar_url"]
         assert avatar_url
         characters.append(
-            {"name": name, "avatar_url": avatar_url, "gender": body["gender"]}
+            {"name": name, "avatar_url": avatar_url, "gender": body["gender"], "persona": body["persona"]}
         )
 
     # --- Screen 0 -> 1: buildInitialDebateState 相当の初期 State ---
@@ -84,21 +86,20 @@ def test_full_scenario_state_survives_screen0_to_screen2(monkeypatch, tmp_path):
     }
 
     # --- Screen 1: 討論ループ (T24/T27) ---
-    def fake_next_turn(state: DebateState) -> NextTurnLLMOutput:
-        names = [c.name for c in state.characters]
-        if state.active_character in names:
-            current_index = names.index(state.active_character)
-        else:
-            current_index = -1
-        next_character = names[(current_index + 1) % len(names)]
-        return NextTurnLLMOutput(
-            active_character=next_character,
-            current_speech=f"ターン{state.turn_count + 1}の発言です。",
+    # advance_turn は generate_agent_thought（全員分）を使うため、それをスタブ化する。
+    def fake_agent_thought(state: DebateState, name: str) -> AgentThoughtOutput:
+        return AgentThoughtOutput(
+            willingness_to_speak=True,
+            thought=f"{name}の思考",
+            hook=f"ターン{state.turn_count + 1}。",
+            body=f"{name}の発言です。",
+            reasoning_target="",
+            concepts=[],
             current_points=[*state.current_points, f"論点{state.turn_count + 1}"][-3:],
             current_topic=f"論点フォーカス{state.turn_count + 1}",
         )
 
-    monkeypatch.setattr(gemini_client, "generate_next_turn", fake_next_turn)
+    monkeypatch.setattr(gemini_client, "generate_agent_thought", fake_agent_thought)
 
     for expected_turn in range(1, 4):
         previous_chat_history_len = len(debate_state["chat_history"])

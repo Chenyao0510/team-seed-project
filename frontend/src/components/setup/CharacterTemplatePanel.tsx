@@ -50,7 +50,7 @@ export function CharacterTemplatePanel({
       data-testid="character-template-panel"
       className="rounded-md border border-gray-200 bg-white p-4"
     >
-      <h2 className="mb-1 text-sm font-semibold text-gray-700">
+      <h2 className="mb-1 text-sm font-semibold !text-gray-900">
         テンプレートから追加
       </h2>
       <p className="mb-3 text-xs text-gray-500">
@@ -94,7 +94,7 @@ export function CharacterTemplatePanel({
                     <img
                       src={tpl.avatar_url}
                       alt={tpl.name}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-cover object-top"
                     />
                   </span>
                   <span className="flex-1 leading-tight">

@@ -42,11 +42,12 @@
 - [x] **T61** `[Both]`: **強制ターンと発言ターンの状態管理分離（競合修正）**
   - `/api/think` による思考フェーズの分離と、ユーザーによる「次へ」ボタンの明示的な進行制御により、AI発言とユーザー介入・強制ターンの競合を根本的に解消。
 
-- [ ] **T62** `[Back]`: **人物発言時時のプロンプト調整**
+- [x] **T62** `[Both]`: **人物発言時時のプロンプト調整**
   - 人物代弁時、本人らしさ(本人ならではの経験や)を強化し、相手への過度な尊重を省く。文章が伸びないよう、主張を短く・はっきり・断定的に出力させる, T64と関連
+  - `CharacterRef` に `persona`(人物像・口調・専門・価値観) を追加し発言生成プロンプトに注入。詳細は DECISIONS D19.
 - [x] **T63** `[Back]`: **文脈に応じた発言者の動的アサイン**
   - 会話ログの文脈から「次に誰が喋るべきか」をLLMに判断させ、発言者を動的に決定。`/api/think` による先行思考と話者交代ロジックの強化で実装済み。
-- [ ] **T64** `[Back]`: **人物の会話生成処理の総合的チューニング**
+- [x] **T64** `[Back]`: **人物の会話生成処理の総合的チューニング**
   - 議論の一貫性向上、端的な発言、論点ズレ防止、紳士的すぎる口調の修正（断定的に・キャラに合わせる）、堂々巡りの防止策の実装。（※最終的な仕上げとして実施）,T62と関連
 - [x] **T65** `[Back]`: **Reflection APIのPre-fetch（先行読み込み）**
   - リフレクションターンの1ターン前にバックグラウンドで `/api/reflection` を実行。結果をキャッシュし、パネル表示時のロード時間を解消。
@@ -60,15 +61,13 @@
 - [x] **T68** `[Both]`: **APIの先行バッチ処理とオートプレイ化**
   - `/api/think` による思考フェーズのバックグラウンド実行により、発言の待ち時間を解消。「次へ」クリック時の即時レスポンスを実現。
 - [x] **T69** `[Both]`: **TTS音声のキャラクター性別判定による話者割り当て**
-  - キャラクター追加時に Gemini で `male`/`female`/`robot` を判定し、`/api/tts` 呼び出しで性別プールから話者を選ぶ。
+  - キャラクター追加時に Gemini で `male`/`female`/`robot` を判定し、`/api/tts` 呼び出しで性別プールから話者を選ぶ。詳細は DECISIONS D17。
 - [x] **T70** `[Front]`: **TTS の先行プリフェッチ**
   - `/api/think` で willing 候補が確定したタイミングで、各候補ぶんの TTS を並列で fetch → Blob URL に変換してキャッシュ。「次へ」クリック後の通信往復ゼロで即再生。
 - [x] **T71** `[Back]`: **TTS サーバー LRU + in-flight coalescing**
   - `/api/tts` 内部に `(text, speaker_id) → wav` の LRU (128 エントリ) を持たせ、同時到達した同一キーは 1 つの Future で共有。フロント prefetch (T70) と二段構え。詳細は DECISIONS D18。
-  - 現状の T67 実装はキャラクター名のハッシュで `speaker_id` を割り当てているため、男性キャラに女声・女性キャラに男声が当たることがある。
-  - キャラクター追加時に AI（Gemini）で性別カテゴリを判定し、`gender: "male" | "female" | "robot"` を State / pydantic スキーマに追加する。
-  - VOICEVOX 話者プールを「男性3種類・女性3種類・ロボット1種類」のグループに分け、性別カテゴリ内でハッシュ分散して `speaker_id` を選ぶ。
-  - 既存キャラクター（テンプレート含む）の `gender` 既定値とフォールバック挙動を `DECISIONS.md` に記録。スキーマ変更を伴うため `D01` 更新と `fixtures/` 更新を同一 PR でまとめる。
+- [x] **T72** `[Both]`: **発言生成リファクタ（reacting/questioning/advancing）**
+  - 発言を `hook`（即時表示の一句）/`body`（タイプライター描画）/`reasoning_target`（返信チップ）/`concepts`（強調語）に構造化。hook+body 合計60文字以内、直前発言への反応・新しい角度・問い・緊張を強制する10の鉄則にプロンプト改訂。persona は口調の色付け専用に再定義（自己紹介・朗読禁止）。詳細は DECISIONS D20。
 
 
 ---
@@ -97,38 +96,20 @@
   - `DebateStage.tsx` をギャルゲー風の立ち絵レイアウトに刷新。
   - 話しているキャラクターに上下に揺れる波形アニメーション (`y: [0, -15, 0]`) と、分類された感情に応じた SVG 絵文字エフェクト（キラキラ、怒りマーク、しずく等）を追加。
 - 2026-06-14: T52 続き（画像参照付き生成 + 立ち絵の画面占有率アップ）。
-  - `backend/app/image_search.py` を新設。汎用画像検索 (DuckDuckGo Images) を 2 段 (vqd トークン取得 → JSON API) で叩き、上位 5 件の中から最初にダウンロード成功した画像を採用。Wikipedia 未登録の人物（ブロガー、地方の有名人、若手の研究者等）でも引けるよう Wikipedia 依存はやめた。マジックバイトで PNG/JPEG/WebP/GIF を判別、4MB 上限。
-  - `backend/app/gemini_client.generate_avatar_image` に `reference_image: tuple[bytes, str] | None` を追加し、`types.Part.from_bytes` で nano banana にマルチモーダル入力。プロンプトに「参照写真の顔立ち・髪型・年代をそっくり再現」指示を追記。NanoBanana が知らない人物でも別人にならないようにする。
+  - `backend/app/image_search.py` を新設。汎用画像検索 (DuckDuckGo Images) を 2 段 (vqd トークン取得 → JSON API) で叩き、上位 5 件の中から最初にダウンロード成功した画像を採用。マジックバイトで PNG/JPEG/WebP/GIF を判別、4MB 上限。
+  - `backend/app/gemini_client.generate_avatar_image` に `reference_image: tuple[bytes, str] | None` を追加し、`types.Part.from_bytes` で nano banana にマルチモーダル入力。プロンプトに「参照写真の顔立ち・髪型・年代をそっくり再現」指示を追記。NanoBanana が知らない人物を見て別人にならないようにする。
   - `backend/app/avatar_pipeline.generate_character_avatar` で参照画像を取得→ description 生成→画像生成の順に差し替え。参照画像取得失敗時は description のみで生成にフォールバック（既存の例外ハンドリングは維持）。
   - 新規テスト `backend/tests/test_image_search.py` (6 ケース): DDG 成功 / 1件目失敗→次候補 / vqd トークン無し / 結果ゼロ / 巨大画像拒否 / MIME 判別不能。既存の `test_add_character.py` のスタブも新シグネチャに追従。
   - `frontend/src/screens/DebateStage.tsx` の立ち絵レイアウトを「列を flex-1 で均等分配 + 高さ `clamp(560px, 90vh, 1200px)`」に刷新。これまで固定幅 (clamp 220–460px) で並べていたため大型化するとユーザー丸が右画面外に押し出されていたが、`flex-1 min-w-0` 分配 + `shrink-0` の user 列で必ず画面内に収まるようにした。立ち絵自体も最大 860px → 1200px に拡大し、ほぼステージ全体を占有するサイズへ。
   - さらに「縦幅統一」要望を反映: 立ち絵 img を `absolute bottom-0 h-full w-auto max-w-none` に変更し、ステージの h-full で全員同じ縦サイズ、横はアスペクト比に応じた自然幅で描画。列幅 (`flex-1 min-w-0 max-w-[360px]`) より広い画像は隣にはみ出して重なる（ユーザー要望: 横重なり可）。
   - 立ち絵 PNG を bbox 自動クロップ: `backend/app/background_removal.py` で透過後 `alpha > 32` の最小外接矩形＋12px パディングにクロップ。これにより透過 PNG の余白が削れ、フロント側 `h-full w-auto` で表示したときキャラがステージを目一杯占めるようになる。`test_background_removal.py` に bbox クロップ／全透過時の現状維持ケースを追加。
   - backend テスト 30 passed、`make verify-all` グリーン。
-- 2026-06-14: T71（TTS サーバー LRU + in-flight coalescing）。
-  - `backend/app/tts.py` を `_fetch_voicevox` (純粋な HTTP 往復) / `_synth_cached` (LRU + Future 共有) / `generate_tts` (Response 化) の 3 層に分離。`_TTS_CACHE_MAXSIZE = 128` の OrderedDict ベース LRU と `_inflight: dict[(text, speaker_id), Future[bytes]]` を導入。
-  - フロント T70 とは独立に動作: prefetch が間に合わない初回ターン / 介入直後でも、過去に出した発話の再再生は即返る。さらに「prefetch がまだ完了していないところに本番リクエストが届く」ケースで同じ Future を await することで VOICEVOX を 1 回しか叩かない。
-  - DECISIONS D18 を新規追加（採用しなかった代替案も記述）。`docs/ARCHITECTURE.md` の `/api/tts` 行に「LRU + coalescing」を追記。
-  - 新規テスト 7 ケース (`test_tts.py`): キャッシュ命中 / 別キー分離 / LRU 追い出し / recent access 保護 / coalescing / 失敗時 in-flight 掃除 / generate_tts ハッピーパス。`asyncio` 制御フロー（`asyncio.Event` での順序保証）でコアレッシングを検証。
-  - backend テスト 63 passed、`make verify-all` グリーン。
-- 2026-06-14: T70（TTS 先行プリフェッチ）。
-  - `DebateStage.tsx` に `ttsCacheRef: Map<key, blobUrl | "pending">` を導入。`state.agent_thoughts` が更新されたタイミングで willing=true の各候補ぶん `/api/tts` を並列 fetch → `URL.createObjectURL(blob)` で Blob URL 化してキャッシュ。
-  - `TelopBox` に `resolveTtsUrl(speaker, speech, gender)` 関数を props で渡し、useEffect 内で URL を解決。キャッシュ命中なら Blob URL（往復ゼロ）、未命中なら従来通り直 `/api/tts?...` URL。
-  - キャッシュキーは `speaker|gender|speech` の組合せ。同じキャラクターでも発言が変われば別 wav。`"pending"` センチネルで二重発火防止。`URL.revokeObjectURL` は Stage アンマウント時に一括解放。
-  - 「次へ」クリック後に体感ラグが大幅減少。`make verify-all` グリーン（backend 56 passed）。
-- 2026-06-14: T69（TTS 性別判定による話者プール分割）。
-  - DECISIONS D17 を新規追加（D01 `CharacterRef.gender` 拡張も併記）。`docs/ARCHITECTURE.md` の `/api/tts` 入力欄に `gender` を追記。
-  - backend: `app/models.py` に `Gender = Literal["male","female","robot"]` + `GenderClassification` Pydantic を追加。`AddCharacterResponse`, `CharacterRef`, `CharacterTemplate` に `gender` フィールドを伝播。`app/gemini_client.classify_gender` を追加（responseSchema で enum 強制 / 失敗時 'male' フォールバック）。`app/routes.py` の `/api/add_character` で `classify_gender` を呼び出し、`/api/tts` に `gender` クエリパラメータを追加。`app/tts.py` を `SPEAKER_POOLS = {male:(11,12,13), female:(2,8,46), robot:(47,)}` プール方式に書き換え、`get_speaker_id(name, gender)` が性別プール内でハッシュ分散。`gender=None` は全プール総和フォールバック（旧 State 互換）。`app/character_templates.py` の `_TEMPLATE_CATALOG` を `(slug, name, gender)` に拡張。
-  - frontend: `types/state.ts` に `Gender` を追加し `Character.gender?` を持たせる。`api/client.ts` の `AddCharacterResponse` / `CharacterTemplate` に `gender`。`SetupScreen.tsx` の `SetupMember.gender?`、`addCharacter` 後と `addMemberByTemplate` で gender を保持。`lib/buildDebateState.ts` で State に伝播。`DebateStage.tsx` の `TelopBox` に `characters` を渡し、TTS URL に `&gender=...` を付与（発言者の gender を State から逆引き）。
-  - fixtures: `debate_state_sample.json` の Jobs / Socrates に `gender: "male"` を追加。
-  - 新規テスト: `backend/tests/test_tts.py`（6ケース: ユーザー固定 / 各プール選択 / 決定性 / フォールバック / プール一意性）、`backend/tests/test_classify_gender.py`（6ケース: 各 gender / 例外 / 空 / 不正 JSON フォールバック）。既存 `test_add_character.py` / `test_character_templates.py` / `test_e2e_scenario.py` を gender 検証で更新。
-  - VOICEVOX 話者選定: 男性 玄野武宏(11) / 白上虎太郎(12) / 青山龍星(13)、女性 四国めたん(2) / 春日部つむぎ(8) / 小夜/SAYO(46)、ロボット ナースロボ_タイプT(47)。
-  - backend テスト 56 passed、`make verify-all` グリーン。
+- 2026-06-14: T62, T64（人物発言プロンプト調整 & 総合チューニング）。
+  - `persona` フィールド導入 (T62/D19)。断定的な口調への改訂 (T64)。
+- 2026-06-14: T69, T70, T71（TTS 強化）。
+  - 性別判定 (T69/D17), プリフェッチ (T70), サーバーキャッシュ (T71/D18) を実装。
+- 2026-06-14: T72（発言構造化リファクタ）。
+  - hook/body/reasoning_target/concepts 構造化とタイプライター演出を実装 (T72/D20)。
 - 2026-06-14: リフレクション中の AI 発言リークと、ユーザー介入後の AI 自動進行を修正。
-  - Bug1 (リフレクション中リーク): `handleNextTurn` が `nextTurn → onStateChange → setShowReflection` の順だったため、次の AI 発言／TTS がモーダル裏で再生されていた。フローを「reflection は state を進めずに先に開く」方式へ変更。`performAdvance()` を新設し、`handleNextTurn` は `(turn_count+1)%3===0` を事前判定してモーダルだけ開く。「見守る」は `performAdvance` を直接呼ぶ。`reflectionShownForTurn` で同一ターン内の再オープン（介入 submit 経由）を防止。
-  - Bug2 (介入後の自動進行): auto-think useEffect に `isUserSpeaker` ガードを追加。介入直後（`active_character === user.name`）は think を自動発火させず、明示的な「次へ」を待つ。介入発言の TelopBox が即座に「発言の準備が整いました」に上書きされる現象を解消。トレードオフ: 介入→AI 反応のときだけ think プリフェッチが効かないため通常より 1〜2 秒遅くなる。AI→AI および reflection→AI（見守る）は従来通り即応。
-  - backend テスト 63 passed、`make verify-all` グリーン。`frontend/src/screens/DebateStage.tsx` 単独の変更でスキーマ・バックエンド変更なし。
-- 2026-06-14: ベースライン修正と T5B（立ち絵下の名前削除）。
-  - ベースライン修正: `DebateStage.tsx` の `interventionRef` を新 `react-hooks/immutability` ルール対応に変更（初期値 null + eslint-disable コメント）。`app/debate.py` の未使用 `roster_names` 削除。`gemini_client.py` の長すぎる行を折り返し。`tests/test_next_turn.py` を T63 リファクタ後の `generate_agent_thought` モック方式に書き換え（廃止予定の `NextTurnLLMOutput` への依存を解消）。
-  - T5B: `DebateStage.tsx` の `CharactersRow` から立ち絵下の名前ピル (`<p>{c.name}</p>`) を削除。発言中ステータスラベル (`STATUS_LABEL[status]`) はアクティブ時のみ表示する小さなピルに残した。ユーザー自身の列（右端円形アバター、立ち絵ではない）は対象外。
-  - backend テスト 41 passed、`make verify-all` グリーン。
+- 2026-06-14: T5B（立ち絵下の名前削除）。
+  - 議論画面（DebateStage）でキャラクター立ち絵の下に表示されている人物名ラベルを非表示にした。

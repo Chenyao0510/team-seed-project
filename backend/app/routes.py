@@ -29,7 +29,20 @@ def add_character(request: AddCharacterRequest) -> AddCharacterResponse:
     # classify_gender は内部で API エラーを握り潰して 'male' フォールバックを返すため、
     # ここでは例外ハンドリング不要。
     gender = gemini_client.classify_gender(request.name)
-    return AddCharacterResponse(avatar_url=avatar_url, gender=gender)
+    # T72 / D18: 発言生成プロンプト用のペルソナを best-effort で生成。
+    # 失敗してもアバター生成のフローは止めない。
+    persona = _safe_generate_persona(request.name)
+    return AddCharacterResponse(
+        avatar_url=avatar_url, gender=gender, persona=persona
+    )
+
+
+def _safe_generate_persona(name: str) -> str:
+    """ペルソナ生成は best-effort。失敗してもアバター生成のフローを止めない (T72)。"""
+    try:
+        return gemini_client.generate_character_persona(name)
+    except Exception:
+        return ""
 
 
 @router.get("/api/character_templates", response_model=list[CharacterTemplate])

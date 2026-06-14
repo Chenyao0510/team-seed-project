@@ -25,6 +25,7 @@ class AddCharacterRequest(BaseModel):
 class AddCharacterResponse(BaseModel):
     avatar_url: str
     gender: Gender
+    persona: str = ""
 
 
 class GenderClassification(BaseModel):
@@ -43,6 +44,8 @@ class CharacterRef(BaseModel):
     # T69: TTS で性別プールから話者を選ぶ。後方互換のため None 許容
     # （未指定の古い State は tts.py 側で名前ハッシュ・フォールバックに回す）。
     gender: Gender | None = None
+    # T72 / D18: 発言生成プロンプトの色付け専用ペルソナ。
+    persona: str = ""
 
 
 class ChatMessage(BaseModel):
@@ -68,14 +71,27 @@ class UserRef(BaseModel):
 
 
 class AgentThoughtOutput(BaseModel):
-    """各エージェント（AI）が個別に次の発言を考える際の構造化出力。"""
+    """各エージェント（AI）が個別に次の発言を考える際の構造化出力。
+
+    発言は単一文字列ではなく `hook`（即座の反応の一句）＋ `body`（主張本体）に分割する
+    (D18)。`current_speech` はバックエンドで `hook + body` から合成する導出値。
+    """
 
     willingness_to_speak: bool
     thought: str = Field(description="発言に至るまでの思考プロセス")
-    current_speech: str
+    hook: str = Field(description="最初に表示する短い反応の一句（〜15文字）")
+    body: str = Field(description="hook に続く主張本体。hook+body 合計60文字以内")
+    reasoning_target: str = Field(default="", description="反応した相手（話者名＋要点）")
+    concepts: list[str] = Field(default_factory=list, description="body 内の強調語を1〜2個")
     current_points: list[str]
     current_topic: str
     emotion: str = "neutral"
+
+
+class CharacterPersonaOutput(BaseModel):
+    """`/api/add_character` でのペルソナ自動生成 (T62) の構造化出力。"""
+
+    persona: str = Field(description="人物像・口調・専門・価値観を1〜2文で表したもの")
 
 
 class DebateState(BaseModel):
@@ -85,7 +101,13 @@ class DebateState(BaseModel):
     current_topic: str
     active_character: str
     status: DebateStatus
+    # current_speech は hook + body から合成した導出値（TTS / chat_history archive 用に温存）。
     current_speech: str
+    # 表示専用の構造化発言フィールド (D18)。後方互換のため全て既定値あり。
+    current_hook: str = ""
+    current_body: str = ""
+    current_reasoning_target: str = ""
+    current_concepts: list[str] = Field(default_factory=list)
     emotion: str = "neutral"
     current_points: list[str]
     characters: list[CharacterRef] = Field(min_length=1)
@@ -99,7 +121,10 @@ class NextTurnLLMOutput(BaseModel):
     """(廃止予定: generate_next_turn で使用していたモデル)"""
 
     active_character: str
-    current_speech: str
+    hook: str = ""
+    body: str = ""
+    reasoning_target: str = ""
+    concepts: list[str] = Field(default_factory=list)
     emotion: str = "neutral"
     current_points: list[str]
     current_topic: str

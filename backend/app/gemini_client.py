@@ -22,6 +22,7 @@ from app.config import (
     IMAGE_MODEL,
     IMAGE_TIMEOUT_SECONDS,
     NEXT_TURN_TIMEOUT_SECONDS,
+    PERSONA_TIMEOUT_SECONDS,
     REFLECTION_TIMEOUT_SECONDS,
     SUMMARIZE_HISTORY_PROMPT_LIMIT,
     SUMMARIZE_TIMEOUT_SECONDS,
@@ -29,6 +30,7 @@ from app.config import (
 )
 from app.models import (
     AgentThoughtOutput,
+    CharacterPersonaOutput,
     DebateState,
     Gender,
     GenderClassification,
@@ -128,6 +130,33 @@ def classify_gender(name: str) -> Gender:
         return GenderClassification.model_validate(json.loads(text)).gender
     except Exception:
         return "male"
+
+
+def generate_character_persona(name: str) -> str:
+    """人物名から、発言生成プロンプトに注入する短いペルソナ文を生成する (T62 / D17)。
+
+    呼び出し元 (routes.add_character) は best-effort で扱い、失敗時は "" を使う前提
+    のため、本関数は失敗時に例外を投げるだけでよい。
+    """
+    prompt = (
+        f"「{name}」という人物の人物像を、討論番組での発言キャラクターとして使うために"
+        "1〜2文・80文字程度の日本語で記述してください。\n"
+        "口調の特徴、専門分野や得意分野、価値観や信条のうち、わかる範囲で含めてください。\n"
+        "前置きや説明文は不要で、人物像の記述のみを書いてください。"
+    )
+    response = _get_client().models.generate_content(
+        model=TEXT_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=CharacterPersonaOutput,
+            http_options=types.HttpOptions(timeout=PERSONA_TIMEOUT_SECONDS * 1000),
+        ),
+    )
+    text = (response.text or "").strip()
+    if not text:
+        raise ValueError("Gemini persona response was empty")
+    return CharacterPersonaOutput.model_validate(json.loads(text)).persona
 
 
 def generate_agent_thought(state: DebateState, character_name: str) -> AgentThoughtOutput:
@@ -260,6 +289,61 @@ def _build_reflection_prompt(state: DebateState) -> str:
     )
 
 
+def _persona_clause(state: DebateState, character_name: str) -> str:
+    """指定キャラクターの persona をプロンプト用の一文に整形する (T62 / D17, D18 で役割変更)。
+
+    persona は **口調・立場の色付けにのみ** 使う。自己紹介・思想の説明・persona の朗読は禁止。
+    persona が未設定の場合は、モデル自身の知識から口調だけを借りるよう促す。
+    """
+    character = next((c for c in state.characters if c.name == character_name), None)
+    persona = character.persona if character else ""
+    if persona:
+        return (
+            f"あなたの人物像（口調・立場・専門領域の参考にのみ使う。説明・朗読はしない。"
+            f"具体例を出すときは、この経歴・専門領域に根ざした自分自身の経験や視点から選ぶこと）: {persona}\n"
+        )
+    return (
+        f"「{character_name}」本人の口調・立場・専門領域をあなたの知識から借りて話す"
+        "（経歴の説明や自己紹介はしない。具体例はその専門領域に根ざした自分自身の経験や"
+        "視点から選ぶこと）。\n"
+    )
+
+
+def _speech_rules(theme: str) -> str:
+    """hook/body/reasoning_target/concepts の生成ルール (D18)。
+
+    両プロンプト（agent_thought / next_turn）で共有する。発言を「講釈」ではなく
+    「直前の発言への反応」にし、新しい角度・60文字以内・問いと緊張を優先させる。
+    """
+    return (
+        "発言は hook / body / reasoning_target / concepts に分けて生成すること:\n"
+        "- hook: 最初に表示する短い反応の一句（〜15文字）。直前の特定の発言への即座の"
+        "リアクション（反論・驚き・問い返しの口火）。\n"
+        "- body: hook に続く主張本体。\n"
+        "- reasoning_target: 今あなたが反応している直前の発言を「話者名: 要点」の形で短く。\n"
+        "- concepts: body の中に **実際に登場する** 重要語を1〜2個（フロントが強調表示する。"
+        "body の文字列とそのまま一致する語にすること）。\n"
+        "発言生成の鉄則:\n"
+        "1. 直前の特定の発言に反応する（一般論で語り出さない）。body の冒頭付近で、"
+        "相手が言ったことに直接触れる応答的な言葉（「それは」「でも」「だったら」"
+        "「〜という話だが」等）を使い、議論に参加して返答していることが伝わるようにする。\n"
+        "2. 自分の思想・哲学・信条を説明しない。\n"
+        "3. 自己紹介をしない。\n"
+        "4. 有名な引用・名言・決め台詞を繰り返さない。\n"
+        "5. 必ず新しい角度を1つ加える。\n"
+        "6. 必ず次のいずれかを、自分の経歴・専門領域に根ざした具体例として含める: "
+        "具体例 / 歴史的事件 / 思考実験 / 実務的な帰結。一般論や教科書的な例ではなく、"
+        "あなた自身の経験・現場・分野で実際に起きた（起きそうな）話として語ること"
+        "（例: エンジニアなら自分が開発・現場で遭遇した話、哲学者なら自分が行った"
+        "対話・問答の経験）。\n"
+        "7. hook と body を合わせて日本語60文字以内に収める（厳守）。\n"
+        "8. できるだけ問いかけの形にする。\n"
+        "9. 同調より緊張（対立・揺さぶり）を優先する。\n"
+        "10. 講釈する人ではなく、その場で一緒に考えている参加者として喋る。\n"
+        f"11. テーマ「{theme}」と現在の論点から逸脱しない。\n"
+    )
+
+
 def _build_agent_thought_prompt(state: DebateState, character_name: str) -> str:
     roster = "、".join(c.name for c in state.characters)
     history_lines = [
@@ -270,6 +354,7 @@ def _build_agent_thought_prompt(state: DebateState, character_name: str) -> str:
 
     return (
         f"あなたは討論番組の参加者「{character_name}」です。\n"
+        f"{_persona_clause(state, character_name)}"
         "以下の討論の状況をもとに、自分が今発言すべきか（発言したいか）を考え、"
         "もし発言するなら何を言うか出力してください。\n\n"
         f"テーマ: {state.theme}\n"
@@ -289,8 +374,7 @@ def _build_agent_thought_prompt(state: DebateState, character_name: str) -> str:
         "（異議・観点・質問）です。あなたは「ユーザー（あなた）」の主張を自分自身のものと"
         "して扱わず、あくまで外部からの新しい視点に対する反応として述べてください。"
         "「私の〜という観点は」のように、ユーザーの意見を自分のものとして主張してはいけません。\n"
-        "- current_speech: もし発言するなら、あなたの口調・立場・視点を反映した、"
-        "1〜3文の日本語の発言。\n"
+        f"{_speech_rules(state.theme)}"
         "- current_points: 議論全体を通じた論点リスト（3〜5個の簡潔な名詞句）。\n"
         "  1ターンでの変更は最小限にすること:\n"
         "    * 追加は最大1個まで（今回の発言で新しく浮上した論点のみ）\n"
@@ -316,6 +400,8 @@ def _build_next_turn_prompt(state: DebateState) -> str:
     points_text = "、".join(state.current_points) if state.current_points else "(まだなし)"
     recent_emotions = [m.emotion for m in state.chat_history[-3:] if m.emotion]
     recent_emotions_text = "、".join(recent_emotions) if recent_emotions else "(まだなし)"
+    persona_lines = [f"{c.name}: {c.persona}" for c in state.characters if c.persona]
+    persona_text = "\n".join(persona_lines) if persona_lines else "(登録なし)"
 
     return (
         "あなたは討論番組の進行役です。以下の討論の状況をもとに、次に発言する人物を1人選び、"
@@ -323,6 +409,7 @@ def _build_next_turn_prompt(state: DebateState) -> str:
         f"テーマ: {state.theme}\n"
         f"現在の論点: {state.current_topic}\n"
         f"登場人物（roster）: {roster}\n"
+        f"登場人物の人物像:\n{persona_text}\n"
         f"直前の発言者: {state.active_character}\n"
         f"これまでの発言ログ（[]内は当時の感情）:\n{history_text}\n"
         f"現在の論点リスト: {points_text}\n"
@@ -332,7 +419,9 @@ def _build_next_turn_prompt(state: DebateState) -> str:
         f"（{state.active_character}）とは別の人物を選ぶこと。\n"
         "- 発言ログの末尾の発言者が roster に含まれない場合、それはユーザーからの介入"
         "（異議・観点・質問）です。次の発言者はその介入に正面から反応すること。\n"
-        "- current_speech は選んだ人物の口調・立場を反映した、1〜3文の日本語の発言。\n"
+        "選んだ人物として発言を生成する。人物像は口調・立場の色付けにのみ使い、"
+        "自己紹介や思想の説明・朗読はしない。\n"
+        f"{_speech_rules(state.theme)}"
         "- emotion は以下の8種類から、発言内容の **感情の重心** に最も合うものを選ぶ:\n"
         '    * "confident": 自説を堂々と断定する／皮肉や勝ち誇り／反論を一蹴する\n'
         '    * "thinking": 問いを返す／前提を疑う／「では〜とはどういうことか」と熟考する\n'

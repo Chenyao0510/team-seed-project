@@ -9,6 +9,8 @@ export interface AddCharacterResponse {
   avatar_url: string
   // T69: TTS 話者プール選択に使う。
   gender: Gender
+  // T72: 発言生成プロンプト用ペルソナ。
+  persona: string
 }
 
 // 事前生成キャラクターテンプレート (T5A / D16, T69)。
@@ -16,7 +18,10 @@ export interface CharacterTemplate {
   slug: string
   name: string
   avatar_url: string
+  // T69: TTS 話者プール選択用。
   gender: Gender
+  // T72: 発言生成プロンプト用ペルソナ。
+  persona: string
 }
 
 export async function getCharacterTemplates(): Promise<CharacterTemplate[]> {

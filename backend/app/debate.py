@@ -42,6 +42,10 @@ def generate_thoughts(state: DebateState) -> DebateState:
         active_character=state.active_character,  # まだ変えない
         status="thinking",
         current_speech="",  # 思考中なので空
+        current_hook="",
+        current_body="",
+        current_reasoning_target="",
+        current_concepts=[],
         current_points=state.current_points,
         characters=state.characters,
         chat_history=chat_history,
@@ -90,12 +94,18 @@ def advance_turn(state: DebateState) -> DebateState:
 
     if thoughts and next_character in thoughts:
         chosen_thought = thoughts[next_character]
-        current_speech = chosen_thought.current_speech
+        hook = chosen_thought.hook
+        body = chosen_thought.body
+        reasoning_target = chosen_thought.reasoning_target
+        concepts = chosen_thought.concepts
         current_points = chosen_thought.current_points
         current_topic = chosen_thought.current_topic
         emotion = chosen_thought.emotion
     else:
-        current_speech = f"{next_character}が話を引き継ぎます。"
+        hook = ""
+        body = f"{next_character}が話を引き継ぎます。"
+        reasoning_target = ""
+        concepts = []
         current_points = state.current_points
         current_topic = state.current_topic
         emotion = "neutral"
@@ -105,7 +115,11 @@ def advance_turn(state: DebateState) -> DebateState:
         current_topic=current_topic,
         active_character=next_character,
         status="speaking",
-        current_speech=current_speech,
+        current_speech=_compose_speech(hook, body),
+        current_hook=hook,
+        current_body=body,
+        current_reasoning_target=reasoning_target,
+        current_concepts=concepts,
         emotion=emotion,
         current_points=current_points,
         characters=state.characters,
@@ -114,6 +128,14 @@ def advance_turn(state: DebateState) -> DebateState:
         user=state.user,
         agent_thoughts=thoughts,
     )
+
+
+def _compose_speech(hook: str, body: str) -> str:
+    """hook と body を 1 つの発言文字列に合成する (D18)。
+
+    TTS / chat_history archive など `current_speech` を読む既存配線のための導出値。
+    """
+    return f"{hook} {body}".strip()
 
 
 def _archive_current_speech(state: DebateState) -> list[ChatMessage]:
